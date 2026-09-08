@@ -12,6 +12,8 @@ brand palette, logos, and typography.
 
 - **Multiple named series** — compare Bitcoin against one asset or many at once,
   each with its own name and colour.
+- **Per-series logos** — upload a logo per series (the **IMG** box on each row);
+  it rides the front of that line as a circular badge and is baked into exports.
 - **Percentage-increase framing** — figures read as `+X%` growth since the start
   (also switchable to multiple `×`, dollars `$`, or raw index).
 - **Dynamic zoom** — the chart starts tight and zooms out as values grow, for a

@@ -94,6 +94,14 @@ input[type="color"] { padding: 0; height: 36px; width: 40px; border-radius: 8px;
 .s-remove:hover { background: #ffe9e6; color: var(--coral); border-color: var(--coral); }
 .series-row textarea { width: 100%; font-family: 'Space Grotesk', monospace; font-size: 13px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; resize: vertical; box-sizing: border-box; }
 
+/* per-series logo upload */
+.s-logo { position: relative; flex: 0 0 auto; }
+.s-logo-face { display: block; width: 34px; height: 34px; border: 1px dashed var(--grey-dark); border-radius: 8px; cursor: pointer; background: #fff center/cover no-repeat; }
+.s-logo:not(.has) .s-logo-face::after { content: 'IMG'; display: flex; align-items: center; justify-content: center; height: 100%; font-size: 9px; font-weight: 700; letter-spacing: .06em; color: #a7a3c4; }
+.s-logo.has .s-logo-face { border-style: solid; border-color: var(--line); }
+.s-logo-clear { position: absolute; top: -7px; right: -7px; width: 18px; height: 18px; border: none; border-radius: 50%; background: var(--coral); color: #fff; font-size: 12px; line-height: 1; padding: 0; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+.s-logo-clear:hover { filter: brightness(1.08); }
+
 /* ---- main / stage ---- */
 .main {
   flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;

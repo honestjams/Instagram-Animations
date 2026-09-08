@@ -32,7 +32,12 @@
       '<div class="series-head">' +
         '<input class="s-color" type="color" value="' + (color || paletteColor(idx)) + '"' + (custom ? ' data-custom="1"' : '') + '>' +
         '<input class="s-name" type="text" placeholder="Series name" value="' + (name || '') + '">' +
-        '<button class="s-remove" type="button" title="Remove">✕</button>' +
+        '<div class="s-logo" title="Upload a logo shown at the front of this line">' +
+          '<input class="s-logo-input" type="file" accept="image/*" hidden>' +
+          '<span class="s-logo-face"></span>' +
+          '<button class="s-logo-clear" type="button" title="Remove logo" hidden>×</button>' +
+        '</div>' +
+        '<button class="s-remove" type="button" title="Remove series">✕</button>' +
       '</div>' +
       '<textarea class="s-values" rows="2" placeholder="100, 120, 150, …">' + (values || '') + '</textarea>';
     seriesList.append(row);
@@ -42,8 +47,36 @@
     return [...seriesList.querySelectorAll('.series-row')].map(r => ({
       name: r.querySelector('.s-name').value || 'Series',
       values: parseSeries(r.querySelector('.s-values').value),
-      color: r.querySelector('.s-color').value
+      color: r.querySelector('.s-color').value,
+      logoSrc: r._logo || null
     })).filter(s => s.values.length >= 2);
+  }
+
+  // Load an image file, downscale to <=256px (keeps memory/export light), return data URL.
+  function processImage(file) {
+    return new Promise((resolve, reject) => {
+      if (!file || !/^image\//.test(file.type)) { reject(new Error('Not an image')); return; }
+      const url = URL.createObjectURL(file);
+      const img = new Image();
+      img.onload = () => {
+        const max = 256, scale = Math.min(1, max / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth * scale)), h = Math.max(1, Math.round(img.naturalHeight * scale));
+        const cv = document.createElement('canvas'); cv.width = w; cv.height = h;
+        cv.getContext('2d').drawImage(img, 0, 0, w, h);
+        URL.revokeObjectURL(url);
+        resolve(cv.toDataURL('image/png'));
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Could not load image')); };
+      img.src = url;
+    });
+  }
+
+  function setRowLogo(row, dataUrl) {
+    row._logo = dataUrl || null;
+    const face = row.querySelector('.s-logo-face');
+    const clear = row.querySelector('.s-logo-clear');
+    if (dataUrl) { row.querySelector('.s-logo').classList.add('has'); face.style.backgroundImage = 'url(' + dataUrl + ')'; clear.hidden = false; }
+    else { row.querySelector('.s-logo').classList.remove('has'); face.style.backgroundImage = ''; clear.hidden = true; }
   }
 
   // ---- build config + render ----
@@ -77,7 +110,11 @@
       guides: $('#guides').checked
     };
     chart.setConfig(cfg);
-    if (render !== false) chart.drawFrame(1); // rest state = finished chart
+    if (render !== false) {
+      chart.drawFrame(1); // rest state = finished chart
+      // once any uploaded logos decode, refresh the static preview
+      if (cfg.series.some(s => s.logoSrc)) chart.ready().then(() => { if (!chart._raf) chart.drawFrame(1); });
+    }
     return cfg;
   }
 
@@ -103,9 +140,23 @@
     build();
   });
   seriesList.addEventListener('click', e => {
+    const row = e.target.closest('.series-row');
     if (e.target.classList.contains('s-remove')) {
-      if (seriesList.children.length > 1) { e.target.closest('.series-row').remove(); presetSel.value = 'custom'; build(); }
+      if (seriesList.children.length > 1) { row.remove(); presetSel.value = 'custom'; build(); }
+    } else if (e.target.classList.contains('s-logo-face')) {
+      row.querySelector('.s-logo-input').click();
+    } else if (e.target.classList.contains('s-logo-clear')) {
+      setRowLogo(row, null); build();
     }
+  });
+  // file chosen for a series logo
+  seriesList.addEventListener('change', async e => {
+    if (!e.target.classList.contains('s-logo-input')) return;
+    const row = e.target.closest('.series-row'), file = e.target.files && e.target.files[0];
+    if (!file) return;
+    try { setRowLogo(row, await processImage(file)); build(); }
+    catch (err) { statusEl.textContent = 'Logo: ' + err.message; }
+    e.target.value = ''; // allow re-selecting the same file
   });
 
   // recolour non-custom rows when theme changes

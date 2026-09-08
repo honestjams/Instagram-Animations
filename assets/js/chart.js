@@ -62,12 +62,14 @@
       });
     }
 
-    // Resolve once fonts + logos are ready (used before export / first paint).
+    // Resolve once fonts + brand logos + uploaded series logos are ready.
     async ready() {
       try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
       const need = window.COINSTASH_LOGOS ? Object.keys(window.COINSTASH_LOGOS).filter(k => k !== 'aspect') : [];
+      const assets = this._assetImgs || [];
       const start = performance.now();
-      while (need.some(k => !this._logos[k]) && performance.now() - start < 2500) {
+      const pending = () => need.some(k => !this._logos[k]) || assets.some(im => !(im.complete && im.naturalWidth));
+      while (pending() && performance.now() - start < 3000) {
         await new Promise(r => setTimeout(r, 50));
       }
     }
@@ -91,11 +93,23 @@
       // Normalise series: trim to a common length; assign palette colours.
       const s = this.cfg.series.filter(x => x && x.values && x.values.length >= 2);
       const n = Math.min.apply(null, s.map(x => x.values.length));
-      this.series = s.map((x, i) => ({
-        name: x.name || ('Series ' + (i + 1)),
-        values: x.values.slice(0, n),
-        color: x.color || th.palette[i % th.palette.length]
-      }));
+      this._assetImgs = [];
+      this.series = s.map((x, i) => {
+        const ns = {
+          name: x.name || ('Series ' + (i + 1)),
+          values: x.values.slice(0, n),
+          color: x.color || th.palette[i % th.palette.length],
+          img: null
+        };
+        if (x.logoSrc) {
+          const img = new Image();
+          img.onload = () => { ns.img = img; };
+          img.src = x.logoSrc;
+          this._assetImgs.push(img);
+          if (img.complete && img.naturalWidth) ns.img = img;
+        }
+        return ns;
+      });
       this.N = n;
       const all = this.series.reduce((a, x) => a.concat(x.values), []);
       this.globalMax = Math.max.apply(null, all);
@@ -283,20 +297,22 @@
         ctx.restore();
       });
 
-      // ---- leading dots ----
+      // ---- leading markers: uploaded logo badge, else a dot ----
+      const BADGE_R = 38;
       const leads = this.series.map(s => {
         const lead = this._valAt(s.values, sc.t);
-        return { s, x: sc.xOf(sc.t), y: sc.yOf(lead), v: lead };
+        const hasLogo = !!(s.img && s.img.complete && s.img.naturalWidth);
+        return { s, x: sc.xOf(sc.t), y: sc.yOf(lead), v: lead, hasLogo, r: hasLogo ? BADGE_R : 15 };
       });
-      if (c.showDots) {
-        leads.forEach(L => {
-          ctx.save();
-          if (c.glow) { ctx.shadowColor = L.s.color; ctx.shadowBlur = 18; }
-          ctx.fillStyle = L.s.color; ctx.beginPath(); ctx.arc(L.x, L.y, 15, 0, 7); ctx.fill();
-          ctx.restore();
-          ctx.fillStyle = th.bgTo; ctx.beginPath(); ctx.arc(L.x, L.y, 7, 0, 7); ctx.fill();
-        });
-      }
+      leads.forEach(L => {
+        if (L.hasLogo) { this._drawBadge(ctx, L.s.img, L.x, L.y, BADGE_R, L.s.color); return; }
+        if (!c.showDots) return;
+        ctx.save();
+        if (c.glow) { ctx.shadowColor = L.s.color; ctx.shadowBlur = 18; }
+        ctx.fillStyle = L.s.color; ctx.beginPath(); ctx.arc(L.x, L.y, 15, 0, 7); ctx.fill();
+        ctx.restore();
+        ctx.fillStyle = th.bgTo; ctx.beginPath(); ctx.arc(L.x, L.y, 7, 0, 7); ctx.fill();
+      });
 
       // ---- value labels (pills, drawn on top, de-collided) ----
       this._drawLabels(ctx, leads, th, FD);
@@ -323,29 +339,47 @@
 
     _drawLabels(ctx, leads, th, FD) {
       ctx.font = "700 46px " + FD;
+      const anyLogo = leads.some(L => L.hasLogo);
       const items = leads.map(L => ({
-        color: L.s.color, x: L.x, dotY: L.y,
+        color: L.s.color, x: L.x, dotY: L.y, r: L.r || 15,
         text: this._fmt(L.v), w: ctx.measureText(this._fmt(L.v)).width
       }));
-      // desired y above the dot; de-collide downward
-      items.forEach(it => { it.y = it.dotY - 34; });
+      // desired y above the marker; de-collide downward
+      items.forEach(it => { it.y = it.dotY - (it.r + 30); });
       items.sort((a, b) => a.y - b.y);
-      const gap = 62;
+      const gap = anyLogo ? 84 : 62;
       for (let i = 1; i < items.length; i++) {
         if (items[i].y - items[i - 1].y < gap) items[i].y = items[i - 1].y + gap;
       }
       items.forEach(it => {
         it.y = clamp(it.y, this.plot.t + 30, this.plot.b - 6);
-        const padX = 16, padY = 9, h = 58;
-        let x = it.x + 22, anchor = 'left';
-        if (x + it.w + padX * 2 > this.plot.r) { x = it.x - 22 - it.w - padX * 2; }
-        // pill
+        const padX = 16, h = 58, pillW = it.w + padX * 2, off = it.r + 12;
+        let x = it.x + off;
+        if (x + pillW > this.plot.r) x = it.x - off - pillW; // flip to the left near the edge
         ctx.fillStyle = th.pill;
-        this._rr(ctx, x, it.y - h / 2, it.w + padX * 2, h, 14); ctx.fill();
+        this._rr(ctx, x, it.y - h / 2, pillW, h, 14); ctx.fill();
         ctx.fillStyle = it.color; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
         ctx.font = "700 46px " + FD;
         ctx.fillText(it.text, x + padX, it.y + 2);
       });
+    }
+
+    // Circular logo badge at the front of a line (white coin + coloured ring).
+    _drawBadge(ctx, img, x, y, R, ring) {
+      ctx.save();
+      if (this.cfg.glow) { ctx.shadowColor = ring; ctx.shadowBlur = 16; }
+      ctx.fillStyle = ring; ctx.beginPath(); ctx.arc(x, y, R, 0, 7); ctx.fill();
+      ctx.restore();
+      ctx.save();
+      const inner = R - 5;
+      ctx.beginPath(); ctx.arc(x, y, inner, 0, 7); ctx.closePath(); ctx.clip();
+      ctx.fillStyle = '#fff'; ctx.fillRect(x - inner, y - inner, inner * 2, inner * 2);
+      // contain the image within the circle, preserving aspect ratio
+      const box = inner * 1.9, iw = img.naturalWidth, ih = img.naturalHeight;
+      const scale = Math.min(box / iw, box / ih);
+      const dw = iw * scale, dh = ih * scale;
+      ctx.drawImage(img, x - dw / 2, y - dh / 2, dw, dh);
+      ctx.restore();
     }
 
     _drawFooter(ctx, th, FD, p) {
