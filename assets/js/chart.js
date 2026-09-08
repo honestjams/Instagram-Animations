@@ -130,8 +130,8 @@
       this.header = { t: cx.t, b: cx.t + headerH };
 
       // Footer band (legend + handle + disclaimer), measured bottom-up
-      const rows = Math.ceil(this.series.length / 2);
-      const legendH = rows * 96 + 8;
+      this.legend = this._computeLegend(cx.r - cx.l);
+      const legendH = this.legend.height;
       const discH = this.cfg.showDisclaimer ? 58 : 8;
       const handleH = this.cfg.showHandle ? 52 : 0;
       this.footer = { legendH, discH, handleH, t: cx.b - (legendH + discH + handleH) };
@@ -276,7 +276,10 @@
       // ---- x labels ----
       ctx.fillStyle = th.axis; ctx.font = "500 30px " + FD; ctx.textAlign = 'center';
       const maxI = Math.floor(sc.xMax + 1e-6);
-      const step = maxI > 8 ? 2 : 1;
+      // thin labels so they never overlap: reserve label width + gap per tick
+      const lw = Math.max(ctx.measureText(this._xLabel(maxI)).width, ctx.measureText(this._xLabel(0)).width);
+      const maxTicks = Math.max(2, Math.floor(this.plot.w / (lw + 26)));
+      const step = Math.max(1, Math.ceil((maxI + 1) / maxTicks));
       for (let i = 0; i <= maxI; i += step) {
         ctx.fillText(this._xLabel(i), sc.xOf(i), this.plot.b + 48);
       }
@@ -383,23 +386,89 @@
       ctx.restore();
     }
 
+    // Pre-compute legend layout: columns, per-item font sizing, wrapped name
+    // lines, and total height. Runs in _layout so the footer can be sized.
+    _computeLegend(cw) {
+      const ctx = this.ctx, FD = "'Space Grotesk', system-ui, sans-serif";
+      const n = this.series.length;
+      const dotGap = 44, nameBase = 42, nameMin = 26, nameLH = 46;
+      const valBase = 62, valMin = 40;
+      const measure = (txt, weight, fs) => { ctx.font = weight + ' ' + fs + 'px ' + FD; return ctx.measureText(txt).width; };
+
+      // 2 columns only if every name fits one line (at the min size) in a half cell.
+      const cellW2 = cw / 2 - dotGap - 14;
+      const fits2 = n >= 2 && this.series.every(s => measure(s.name, '600', nameMin) <= cellW2);
+      const cols = fits2 ? 2 : 1;
+      const cellW = cols === 2 ? cellW2 : (cw - dotGap - 14);
+
+      const items = this.series.map(s => {
+        let nf = nameBase;
+        while (nf > nameMin && measure(s.name, '600', nf) > cellW) nf -= 2;
+        let lines = [s.name];
+        if (measure(s.name, '600', nf) > cellW) lines = this._wrap(s.name, '600 ' + nf + 'px ' + FD, cellW, 2);
+        let vf = valBase;
+        const finalText = this._fmt(s.values[this.N - 1]);
+        while (vf > valMin && measure(finalText, '700', vf) > cellW) vf -= 2;
+        const blockH = 24 + (lines.length - 1) * nameLH + 66 + 30;
+        return { s, nf, lines, vf, nameLH, blockH };
+      });
+
+      const rows = cols === 2 ? Math.ceil(n / 2) : n;
+      const rowHeights = [];
+      for (let r = 0; r < rows; r++) {
+        let h = 0;
+        for (let c = 0; c < cols; c++) { const i = cols === 2 ? r * 2 + c : r; if (i < n) h = Math.max(h, items[i].blockH); }
+        rowHeights.push(h);
+      }
+      const height = rowHeights.reduce((a, b) => a + b, 0) + 6;
+      return { cols, dotGap, nameLH, items, rows, rowHeights, height };
+    }
+
+    _wrap(text, font, maxW, maxLines) {
+      const ctx = this.ctx; ctx.font = font;
+      const words = text.split(/\s+/).filter(Boolean);
+      const lines = []; let cur = '';
+      for (let i = 0; i < words.length; i++) {
+        const test = cur ? cur + ' ' + words[i] : words[i];
+        if (ctx.measureText(test).width <= maxW || !cur) cur = test;
+        else {
+          lines.push(cur); cur = words[i];
+          if (lines.length === maxLines - 1) { cur = words.slice(i).join(' '); break; }
+        }
+      }
+      if (cur) lines.push(cur);
+      return lines.slice(0, maxLines).map(l => this._ellipsize(l, font, maxW));
+    }
+
+    _ellipsize(text, font, maxW) {
+      const ctx = this.ctx; ctx.font = font;
+      if (ctx.measureText(text).width <= maxW) return text;
+      let s = text;
+      while (s.length > 1 && ctx.measureText(s + '…').width > maxW) s = s.slice(0, -1);
+      return s + '…';
+    }
+
     _drawFooter(ctx, th, FD, p) {
       const eased = easeInOutCubic(clamp(p, 0, 1));
       const t = eased * (this.N - 1);
-      const f = this.footer, cx = this.content;
-      // legend grid (2 columns)
-      const colW = (cx.r - cx.l) / 2;
+      const f = this.footer, cx = this.content, leg = this.legend;
+      const colW = (cx.r - cx.l) / leg.cols;
       ctx.textBaseline = 'alphabetic';
-      this.series.forEach((s, i) => {
-        const col = i % 2, row = Math.floor(i / 2);
-        const x = cx.l + col * colW, y = f.t + row * 96;
-        ctx.fillStyle = s.color; ctx.beginPath(); ctx.arc(x + 14, y + 8, 15, 0, 7); ctx.fill();
-        ctx.fillStyle = th.text; ctx.font = "600 42px " + FD; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
-        ctx.fillText(s.name, x + 42, y + 20);
-        const curV = this._valAt(s.values, t); // matches the on-chart leading value
-        ctx.fillStyle = s.color; ctx.font = "700 62px " + FD;
-        ctx.fillText(this._fmt(curV), x + 42, y + 78);
-      });
+      let rowY = f.t;
+      for (let r = 0; r < leg.rows; r++) {
+        for (let c = 0; c < leg.cols; c++) {
+          const idx = leg.cols === 2 ? r * 2 + c : r;
+          if (idx >= this.series.length) continue;
+          const it = leg.items[idx], s = it.s, x = cx.l + c * colW;
+          ctx.fillStyle = s.color; ctx.beginPath(); ctx.arc(x + 14, rowY + 12, 15, 0, 7); ctx.fill();
+          ctx.fillStyle = th.text; ctx.textAlign = 'left'; ctx.font = '600 ' + it.nf + 'px ' + FD;
+          it.lines.forEach((ln, li) => ctx.fillText(ln, x + leg.dotGap, rowY + 24 + li * it.nameLH));
+          const curV = this._valAt(s.values, t);
+          ctx.fillStyle = s.color; ctx.font = '700 ' + it.vf + 'px ' + FD;
+          ctx.fillText(this._fmt(curV), x + leg.dotGap, rowY + 24 + (it.lines.length - 1) * it.nameLH + 66);
+        }
+        rowY += leg.rowHeights[r];
+      }
       // handle
       let by = cx.b;
       if (this.cfg.showDisclaimer) {
