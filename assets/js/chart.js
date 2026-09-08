@@ -108,9 +108,13 @@
       const n = Math.min.apply(null, s.map(x => x.values.length));
       this._assetImgs = [];
       this.series = s.map((x, i) => {
+        let vals = x.values.slice(0, n);
+        // Invert: rebase to the reciprocal path (start stays at 100), turning an
+        // appreciating series into a declining "cost" one, and vice-versa.
+        if (x.invert) { const v0 = vals[0] || 1; vals = vals.map(v => 100 * v0 / (v || 1e-9)); }
         const ns = {
           name: x.name || ('Series ' + (i + 1)),
-          values: x.values.slice(0, n),
+          values: vals,
           color: x.color || th.palette[i % th.palette.length],
           img: null
         };

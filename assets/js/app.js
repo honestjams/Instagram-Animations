@@ -39,7 +39,8 @@
         '</div>' +
         '<button class="s-remove" type="button" title="Remove series">✕</button>' +
       '</div>' +
-      '<textarea class="s-values" rows="2" placeholder="100, 120, 150, …">' + (values || '') + '</textarea>';
+      '<textarea class="s-values" rows="2" placeholder="100, 120, 150, …">' + (values || '') + '</textarea>' +
+      '<label class="checkline s-invert-row"><input class="s-invert" type="checkbox"> Invert (show as inverse / cost — falls as the other rises)</label>';
     seriesList.append(row);
   }
 
@@ -48,7 +49,8 @@
       name: r.querySelector('.s-name').value || 'Series',
       values: parseSeries(r.querySelector('.s-values').value),
       color: r.querySelector('.s-color').value,
-      logoSrc: r._logo || null
+      logoSrc: r._logo || null,
+      invert: r.querySelector('.s-invert').checked
     })).filter(s => s.values.length >= 2);
   }
 
