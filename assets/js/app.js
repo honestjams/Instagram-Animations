@@ -40,7 +40,7 @@
         '<button class="s-remove" type="button" title="Remove series">✕</button>' +
       '</div>' +
       '<textarea class="s-values" rows="2" placeholder="100, 120, 150, …">' + (values || '') + '</textarea>' +
-      '<label class="checkline s-invert-row"><input class="s-invert" type="checkbox"> Invert (show as inverse / cost — falls as the other rises)</label>';
+      '<label class="checkline s-invert-row"><input class="s-invert" type="checkbox"> Invert (mirror below zero — a falling cost as the other rises)</label>';
     seriesList.append(row);
   }
 

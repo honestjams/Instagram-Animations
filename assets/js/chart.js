@@ -109,9 +109,10 @@
       this._assetImgs = [];
       this.series = s.map((x, i) => {
         let vals = x.values.slice(0, n);
-        // Invert: rebase to the reciprocal path (start stays at 100), turning an
-        // appreciating series into a declining "cost" one, and vice-versa.
-        if (x.invert) { const v0 = vals[0] || 1; vals = vals.map(v => 100 * v0 / (v || 1e-9)); }
+        // Invert: mirror the series across its start value, so an appreciating
+        // series descends below the baseline into negative territory — a running
+        // "cost" that falls as the other rises (start stays at the baseline).
+        if (x.invert) { const v0 = vals[0]; vals = vals.map(v => 2 * v0 - v); }
         const ns = {
           name: x.name || ('Series ' + (i + 1)),
           values: vals,
@@ -175,7 +176,7 @@
       const xOf = i => this.plot.l + (i / xMax) * this.plot.w;
 
       // vertical domain
-      let vmin = 100, vmax;
+      let vmin, vmax;
       if (zoom) {
         let mx = 100, mn = 100;
         this.series.forEach(s => {
@@ -183,11 +184,13 @@
           for (let i = 0; i <= full && i < s.values.length; i++) { mx = Math.max(mx, s.values[i]); mn = Math.min(mn, s.values[i]); }
           const lead = this._valAt(s.values, t); mx = Math.max(mx, lead); mn = Math.min(mn, lead);
         });
-        vmin = Math.min(100, mn * 0.98);
-        vmax = Math.max(mx * 1.12, vmin + 15);
+        vmax = Math.max(mx * 1.12, 115);
+        // when a series dips below the baseline (e.g. an inverted "cost"), extend
+        // the domain downward with headroom so the descent is fully visible
+        vmin = mn < 100 ? mn - (vmax - mn) * 0.06 : Math.min(100, mn * 0.98);
       } else {
-        vmin = Math.min(100, this.globalMin);
         vmax = this.globalMax * 1.05;
+        vmin = this.globalMin < 100 ? this.globalMin - (vmax - this.globalMin) * 0.05 : Math.min(100, this.globalMin);
       }
 
       let yOf;
@@ -213,7 +216,7 @@
       const num = x => opt.compact ? compact(x) : (d ? x.toFixed(d) : comma(x));
       switch (c.valueMode) {
         case 'multiple': return num(indexVal / 100) + '×';
-        case 'dollars': return '$' + num(c.baseInvest * indexVal / 100);
+        case 'dollars': { const dv = c.baseInvest * indexVal / 100; return (dv < 0 ? '-$' : '$') + num(Math.abs(dv)); }
         case 'index': return num(indexVal);
         case 'pct':
         default: {

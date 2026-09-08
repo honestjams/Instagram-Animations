@@ -14,6 +14,10 @@ brand palette, logos, and typography.
   each with its own name and colour.
 - **Per-series logos** — upload a logo per series (the **IMG** box on each row);
   it rides the front of that line as a circular badge and is baked into exports.
+- **Invert a series** — the per-row **Invert** toggle mirrors a series below the
+  baseline into negative territory, turning a rising quantity into a falling
+  "cost" (e.g. compare a rising Bitcoin investment against a negative running
+  cost). Reads most clearly in **% increase** mode (starts at 0, goes negative).
 - **Percentage-increase framing** — figures read as `+X%` growth since the start
   (also switchable to multiple `×`, dollars `$`, or raw index).
 - **Dynamic zoom** — the chart starts tight and zooms out as values grow, for a
