@@ -1,286 +1,422 @@
 /*
- * ReelChart — renders a 1080x1920 (9:16) animated comparison chart into an SVG.
- * Framework-free. Static chrome is drawn once; only the dynamic layer (lines,
- * leading dots, live value labels) updates each animation frame.
+ * ReelChart — Canvas2D renderer for 1080x1920 (9:16) animated comparison charts.
+ * Canvas (not SVG) so that: (a) webfonts render correctly inside exported video,
+ * and (b) the frame can be captured via canvas.captureStream() for MP4/WebM export.
+ *
+ * Features: N named series, dynamic "zoom-out" scaling, percentage-increase
+ * framing, Instagram safe-zone insets, and legible value labels drawn on top.
  */
 (function () {
-  const NS = 'http://www.w3.org/2000/svg';
   const W = 1080, H = 1920;
-
-  // Plot box within the 1080x1920 stage.
-  const M = { t: markT(), r: 70, b: 470, l: 104 };
-  function markT() { return 640; }
-  const plot = {
-    l: M.l, r: W - M.r, t: M.t, b: H - M.b,
-    get w() { return this.r - this.l; },
-    get h() { return this.b - this.t; }
-  };
-
   const easeInOutCubic = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
-  function el(tag, attrs, text) {
-    const n = document.createElementNS(NS, tag);
-    if (attrs) for (const k in attrs) n.setAttribute(k, attrs[k]);
-    if (text != null) n.textContent = text;
-    return n;
+  function niceNum(range, round) {
+    if (range <= 0) return 1;
+    const exp = Math.floor(Math.log10(range));
+    const f = range / Math.pow(10, exp);
+    let nf;
+    if (round) nf = f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10;
+    else nf = f <= 1 ? 1 : f <= 2 ? 2 : f <= 5 ? 5 : 10;
+    return nf * Math.pow(10, exp);
   }
-
-  function niceCeil(v) {
-    if (v <= 0) return 1;
-    const mag = Math.pow(10, Math.floor(Math.log10(v)));
-    const n = v / mag;
-    const step = n <= 1 ? 1 : n <= 1.5 ? 1.5 : n <= 2 ? 2 : n <= 2.5 ? 2.5
-      : n <= 3 ? 3 : n <= 4 ? 4 : n <= 5 ? 5 : n <= 7.5 ? 7.5 : 10;
-    return step * mag;
-  }
-
-  const fmtInt = n => Math.round(n).toLocaleString('en-US');
-  // Compact form for axis ticks: 25000 -> 25K, 1.2e6 -> 1.2M.
-  function fmtCompact(n) {
-    n = Math.round(n);
+  const comma = n => Math.round(n).toLocaleString('en-US');
+  function compact(n) {
     const a = Math.abs(n);
     if (a >= 1e6) return (n / 1e6).toFixed(a % 1e6 ? 1 : 0) + 'M';
     if (a >= 1000) return Math.round(n / 1000) + 'K';
-    return String(n);
+    return String(Math.round(n));
+  }
+
+  function pickMime() {
+    const cands = [
+      { type: 'video/mp4;codecs=avc1.42E01E', ext: 'mp4' },
+      { type: 'video/mp4', ext: 'mp4' },
+      { type: 'video/webm;codecs=vp9', ext: 'webm' },
+      { type: 'video/webm;codecs=vp8', ext: 'webm' },
+      { type: 'video/webm', ext: 'webm' }
+    ];
+    for (const c of cands) {
+      if (window.MediaRecorder && MediaRecorder.isTypeSupported(c.type)) return c;
+    }
+    return { type: '', ext: 'webm' };
   }
 
   class ReelChart {
-    constructor(svg) {
-      this.svg = svg;
-      svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
-      this.cfg = null;
+    constructor(canvas) {
+      this.canvas = canvas;
+      canvas.width = W; canvas.height = H;
+      this.ctx = canvas.getContext('2d');
       this._raf = null;
+      this._logos = {};
+      this._loadLogos();
+    }
+
+    _loadLogos() {
+      const src = window.COINSTASH_LOGOS || {};
+      ['white', 'black'].forEach(k => {
+        if (!src[k]) return;
+        const img = new Image();
+        img.onload = () => { this._logos[k] = img; };
+        img.src = src[k];
+      });
+    }
+
+    // Resolve once fonts + logos are ready (used before export / first paint).
+    async ready() {
+      try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
+      const need = window.COINSTASH_LOGOS ? Object.keys(window.COINSTASH_LOGOS).filter(k => k !== 'aspect') : [];
+      const start = performance.now();
+      while (need.some(k => !this._logos[k]) && performance.now() - start < 2500) {
+        await new Promise(r => setTimeout(r, 50));
+      }
     }
 
     setConfig(cfg) {
-      // cfg: {bitcoin[], asset[], assetName, title, subtitle, theme, scale,
-      //       xMode, startYear, baseInvest, showMoney, duration, handle, disclaimer}
       this.cfg = Object.assign({
-        scale: 'linear',
-        xMode: 'observation',
-        startYear: 2015,
-        baseInvest: 100,
-        showMoney: true,
-        duration: 5200,
+        series: [], title: '', subtitle: '',
+        theme: null, valueMode: 'pct', baseInvest: 100, decimals: 0,
+        scale: 'linear', zoom: true,
+        xMode: 'observation', startYear: 2015,
+        duration: 5600, endHold: 1400,
+        lineWidth: 11, showGrid: true, showDots: true, glow: true,
+        showLogo: true, showHandle: true, showDisclaimer: true,
         handle: '@coinstash',
-        disclaimer: 'Past performance is not a reliable indicator of future results. Not financial advice.'
+        disclaimer: 'Past performance is not a reliable indicator of future results. Not financial advice.',
+        safeZone: true, guides: false,
+        title2: '% increase since start'
       }, cfg);
-      this._computeScale();
+
+      const th = this.cfg.theme;
+      // Normalise series: trim to a common length; assign palette colours.
+      const s = this.cfg.series.filter(x => x && x.values && x.values.length >= 2);
+      const n = Math.min.apply(null, s.map(x => x.values.length));
+      this.series = s.map((x, i) => ({
+        name: x.name || ('Series ' + (i + 1)),
+        values: x.values.slice(0, n),
+        color: x.color || th.palette[i % th.palette.length]
+      }));
+      this.N = n;
+      const all = this.series.reduce((a, x) => a.concat(x.values), []);
+      this.globalMax = Math.max.apply(null, all);
+      this.globalMin = Math.min.apply(null, all);
+      this._layout();
     }
 
-    _computeScale() {
-      const c = this.cfg;
-      const all = c.bitcoin.concat(c.asset).filter(v => typeof v === 'number');
-      const rawMax = Math.max(...all);
-      if (c.scale === 'log') {
-        this.vmin = 100;                        // series start at 100
-        this.vmax = niceCeil(rawMax);
-        this._y = v => plot.b - (Math.log10(Math.max(v, 1)) - Math.log10(this.vmin)) /
-          (Math.log10(this.vmax) - Math.log10(this.vmin)) * plot.h;
+    _layout() {
+      const safe = this.cfg.safeZone
+        ? { t: 120, r: 112, b: 322, l: 60 }
+        : { t: 44, r: 44, b: 64, l: 44 };
+      this.safe = safe;
+      const cx = { l: safe.l, r: W - safe.r, t: safe.t, b: H - safe.b };
+      this.content = cx;
+
+      // Header band (logo + title + subtitle)
+      const headerH = 236;
+      this.header = { t: cx.t, b: cx.t + headerH };
+
+      // Footer band (legend + handle + disclaimer), measured bottom-up
+      const rows = Math.ceil(this.series.length / 2);
+      const legendH = rows * 96 + 8;
+      const discH = this.cfg.showDisclaimer ? 58 : 8;
+      const handleH = this.cfg.showHandle ? 52 : 0;
+      this.footer = { legendH, discH, handleH, t: cx.b - (legendH + discH + handleH) };
+
+      // Plot box
+      this.plot = {
+        l: cx.l + 96, r: cx.r - 10,
+        t: this.header.b + 18, b: this.footer.t - 44
+      };
+      this.plot.w = this.plot.r - this.plot.l;
+      this.plot.h = this.plot.b - this.plot.t;
+    }
+
+    // ---- scales for a given progress p ----
+    _scales(p) {
+      const eased = easeInOutCubic(clamp(p, 0, 1));
+      const t = eased * (this.N - 1);           // fractional leading index
+      const zoom = this.cfg.zoom;
+
+      const xMax = zoom ? Math.max(1, t) : (this.N - 1);
+      const xOf = i => this.plot.l + (i / xMax) * this.plot.w;
+
+      // vertical domain
+      let vmin = 100, vmax;
+      if (zoom) {
+        let mx = 100, mn = 100;
+        this.series.forEach(s => {
+          const full = Math.floor(t);
+          for (let i = 0; i <= full && i < s.values.length; i++) { mx = Math.max(mx, s.values[i]); mn = Math.min(mn, s.values[i]); }
+          const lead = this._valAt(s.values, t); mx = Math.max(mx, lead); mn = Math.min(mn, lead);
+        });
+        vmin = Math.min(100, mn * 0.98);
+        vmax = Math.max(mx * 1.12, vmin + 15);
       } else {
-        this.vmin = 0;
-        this.vmax = niceCeil(rawMax);
-        this._y = v => plot.b - (v - this.vmin) / (this.vmax - this.vmin) * plot.h;
+        vmin = Math.min(100, this.globalMin);
+        vmax = this.globalMax * 1.05;
       }
-      this.N = c.bitcoin.length;
-      this._x = i => plot.l + i * plot.w / (this.N - 1);
+
+      let yOf;
+      if (this.cfg.scale === 'log') {
+        const lo = Math.log10(Math.max(1, vmin)), hi = Math.log10(vmax);
+        yOf = v => this.plot.b - (Math.log10(Math.max(1, v)) - lo) / (hi - lo) * this.plot.h;
+      } else {
+        yOf = v => this.plot.b - (v - vmin) / (vmax - vmin) * this.plot.h;
+      }
+      return { t, xMax, vmin, vmax, xOf, yOf };
     }
 
-    _xLabel(i) {
-      return this.cfg.xMode === 'year' ? String(this.cfg.startYear + i) : String(i + 1);
-    }
-
-    _bigValue(indexVal) {
-      // Returns the number shown as the "live" figure for a series.
-      return this.cfg.showMoney ? (this.cfg.baseInvest * indexVal / 100) : indexVal;
-    }
-
-    _fmtBig(n) {
-      return (this.cfg.showMoney ? '$' : '') + fmtInt(n);
-    }
-
-    // Compact label for the y-axis (keeps big numbers from clipping the edge).
-    _fmtAxis(n) {
-      return (this.cfg.showMoney ? '$' : '') + fmtCompact(n);
-    }
-
-    // Value at fractional index t (linear interpolation between observations).
     _valAt(arr, t) {
       const i = Math.floor(t), f = t - i;
       if (i >= arr.length - 1) return arr[arr.length - 1];
       return arr[i] + (arr[i + 1] - arr[i]) * f;
     }
 
-    render() {
-      const svg = this.svg, c = this.cfg, th = c.theme;
-      svg.replaceChildren();
-
-      // ---- defs: background gradient + line glow ----
-      const defs = el('defs');
-      const grad = el('linearGradient', { id: 'bg', x1: '0', y1: '0', x2: '0', y2: '1' });
-      grad.append(el('stop', { offset: '0', 'stop-color': th.bgFrom }));
-      grad.append(el('stop', { offset: '1', 'stop-color': th.bgTo }));
-      defs.append(grad);
-      const glow = el('filter', { id: 'glow', x: '-50%', y: '-50%', width: '200%', height: '200%' });
-      glow.append(el('feGaussianBlur', { stdDeviation: '9', result: 'b' }));
-      const merge = el('feMerge');
-      merge.append(el('feMergeNode', { in: 'b' }));
-      merge.append(el('feMergeNode', { in: 'SourceGraphic' }));
-      glow.append(merge);
-      defs.append(glow);
-      svg.append(defs);
-
-      svg.append(el('rect', { x: 0, y: 0, width: W, height: H, fill: 'url(#bg)' }));
-
-      // ---- static chrome layer ----
-      const S = el('g');
-      svg.append(S);
-
-      // Header: title + subtitle
-      if (c.title) S.append(el('text', {
-        x: W / 2, y: 300, 'text-anchor': 'middle', fill: th.text,
-        'font-size': 108, 'font-weight': 700, class: 'r-head', 'letter-spacing': '-2'
-      }, c.title));
-      if (c.subtitle) S.append(el('text', {
-        x: W / 2, y: 392, 'text-anchor': 'middle', fill: th.subtext,
-        'font-size': 46, 'font-weight': 500, class: 'r-head'
-      }, c.subtitle));
-
-      // Y grid + labels
-      for (let i = 0; i <= 4; i++) {
-        let v, yy;
-        if (c.scale === 'log') {
-          const lo = Math.log10(this.vmin), hi = Math.log10(this.vmax);
-          v = Math.pow(10, lo + (hi - lo) * i / 4);
-          yy = this._y(v);
-        } else {
-          v = this.vmin + (this.vmax - this.vmin) * i / 4;
-          yy = this._y(v);
+    // ---- value formatting ----
+    _fmt(indexVal, opt) {
+      opt = opt || {};
+      const c = this.cfg, d = c.decimals;
+      const num = x => opt.compact ? compact(x) : (d ? x.toFixed(d) : comma(x));
+      switch (c.valueMode) {
+        case 'multiple': return num(indexVal / 100) + '×';
+        case 'dollars': return '$' + num(c.baseInvest * indexVal / 100);
+        case 'index': return num(indexVal);
+        case 'pct':
+        default: {
+          const g = indexVal - 100;
+          return (g >= 0 ? '+' : '') + num(g) + '%';
         }
-        S.append(el('line', { x1: plot.l, y1: yy, x2: plot.r, y2: yy, stroke: th.grid, 'stroke-width': 2 }));
-        S.append(el('text', {
-          x: plot.l - 22, y: yy + 12, 'text-anchor': 'end', fill: th.axis,
-          'font-size': 32, class: 'r-mono'
-        }, this._fmtAxis(this._bigValue(v))));
       }
-
-      // X axis ticks + labels (thin out if many observations)
-      const stepX = this.N > 8 ? 2 : 1;
-      for (let i = 0; i < this.N; i += stepX) {
-        S.append(el('text', {
-          x: this._x(i), y: plot.b + 56, 'text-anchor': 'middle', fill: th.axis,
-          'font-size': 32, class: 'r-mono'
-        }, this._xLabel(i)));
-      }
-      // x axis caption
-      S.append(el('text', {
-        x: W / 2, y: plot.b + 118, 'text-anchor': 'middle', fill: th.axis,
-        'font-size': 30, class: 'r-head'
-      }, c.xMode === 'year' ? 'Year' : 'Observation'));
-
-      // ---- footer chrome ----
-      // Legend chips with final multiples
-      const btcFinal = c.bitcoin[c.bitcoin.length - 1] / 100;
-      const assetFinal = c.asset[c.asset.length - 1] / 100;
-      this._legend(S, th, c, btcFinal, assetFinal);
-
-      // Handle + disclaimer
-      S.append(el('text', {
-        x: W / 2, y: H - 132, 'text-anchor': 'middle', fill: th.text,
-        'font-size': 40, 'font-weight': 700, class: 'r-head'
-      }, c.handle));
-      S.append(el('text', {
-        x: W / 2, y: H - 70, 'text-anchor': 'middle', fill: th.subtext,
-        'font-size': 24, class: 'r-head'
-      }, c.disclaimer));
-
-      // ---- dynamic layer (updated each frame) ----
-      this.dyn = el('g');
-      svg.append(this.dyn);
-      this.drawFrame(0);
     }
 
-    _legend(S, th, c, btcFinal, assetFinal) {
-      const y = H - 300;
-      const mk = (cx, colour, name) => {
-        const g = el('g');
-        g.append(el('circle', { cx: cx, cy: y - 12, r: 15, fill: colour }));
-        g.append(el('text', { x: cx + 30, y: y, fill: th.text, 'font-size': 44, 'font-weight': 600, class: 'r-head' }, name));
-        g.append(el('text', { x: cx + 30, y: y + 62, fill: colour, 'font-size': 72, 'font-weight': 700, class: 'r-mono', 'data-mult': '1' }, ''));
-        S.append(g);
-        return g;
-      };
-      // Two columns
-      this._legBtc = mk(plot.l + 8, th.btc, 'Bitcoin');
-      this._legAsset = mk(W / 2 + 40, th.asset, c.assetName || 'Asset');
-      this._legBtcVal = this._legBtc.querySelector('[data-mult]');
-      this._legAssetVal = this._legAsset.querySelector('[data-mult]');
+    // ---- drawing ----
+    _rr(ctx, x, y, w, h, r) {
+      ctx.beginPath();
+      ctx.moveTo(x + r, y);
+      ctx.arcTo(x + w, y, x + w, y + h, r);
+      ctx.arcTo(x + w, y + h, x, y + h, r);
+      ctx.arcTo(x, y + h, x, y, r);
+      ctx.arcTo(x, y, x + w, y, r);
+      ctx.closePath();
     }
 
     drawFrame(p) {
-      const c = this.cfg, th = c.theme, dyn = this.dyn;
-      dyn.replaceChildren();
-      const eased = easeInOutCubic(Math.max(0, Math.min(1, p)));
-      const t = eased * (this.N - 1); // fractional leading index
+      const ctx = this.ctx, c = this.cfg, th = c.theme, sc = this._scales(p);
+      const FD = "'Space Grotesk', system-ui, sans-serif";
 
-      const series = [
-        { key: 'bitcoin', colour: th.btc, name: 'Bitcoin' },
-        { key: 'asset', colour: th.asset, name: c.assetName || 'Asset' }
-      ];
+      // background
+      const g = ctx.createLinearGradient(0, 0, 0, H);
+      g.addColorStop(0, th.bgFrom); g.addColorStop(1, th.bgTo);
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
 
-      series.forEach(s => {
-        const arr = c[s.key];
-        const full = Math.floor(t);
-        const pts = [];
-        for (let i = 0; i <= full; i++) pts.push(this._x(i) + ',' + this._y(arr[i]));
-        const lead = this._valAt(arr, t);
-        const lx = this._x(t), ly = this._y(lead);
-        pts.push(lx + ',' + ly);
+      // safe-zone guides (preview only)
+      if (c.guides) {
+        ctx.save();
+        ctx.strokeStyle = 'rgba(255,120,98,0.7)'; ctx.setLineDash([14, 12]); ctx.lineWidth = 2;
+        ctx.strokeRect(this.content.l, this.content.t, this.content.r - this.content.l, this.content.b - this.content.t);
+        ctx.restore();
+      }
 
-        dyn.append(el('polyline', {
-          points: pts.join(' '), fill: 'none', stroke: s.colour,
-          'stroke-width': 10, 'stroke-linecap': 'round', 'stroke-linejoin': 'round',
-          filter: 'url(#glow)'
-        }));
-        // leading dot
-        dyn.append(el('circle', { cx: lx, cy: ly, r: 16, fill: s.colour, filter: 'url(#glow)' }));
-        dyn.append(el('circle', { cx: lx, cy: ly, r: 9, fill: th.bgTo }));
+      // ---- header ----
+      const cw = this.content.r - this.content.l;
+      const fit = (text, base, min, weight) => {
+        let fs = base;
+        ctx.font = weight + ' ' + fs + 'px ' + FD;
+        const w = ctx.measureText(text).width;
+        if (w > cw * 0.99) fs = Math.max(min, Math.floor(fs * cw * 0.99 / w));
+        return fs;
+      };
+      let hy = this.header.t;
+      if (c.showLogo && this._logos[th.logo]) {
+        const lh = 52, lw = lh * (window.COINSTASH_LOGOS.aspect || 5.05);
+        ctx.drawImage(this._logos[th.logo], W / 2 - lw / 2, hy, lw, lh);
+        hy += lh + 24;
+      } else { hy += 18; }
+      ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
+      if (c.title) {
+        const fs = fit(c.title, 104, 52, '700');
+        ctx.fillStyle = th.text; ctx.font = '700 ' + fs + 'px ' + FD;
+        ctx.fillText(c.title, W / 2, hy + fs * 0.9);
+        hy += fs * 0.9 + 12;
+      }
+      if (c.subtitle) {
+        const fs = fit(c.subtitle, 44, 26, '500');
+        ctx.fillStyle = th.subtext; ctx.font = '500 ' + fs + 'px ' + FD;
+        ctx.fillText(c.subtitle, W / 2, hy + fs);
+      }
 
-        // live value label near leading dot
-        const val = this._bigValue(lead);
-        const above = s.key === 'bitcoin';
-        dyn.append(el('text', {
-          x: Math.min(lx, plot.r - 10),
-          y: above ? Math.max(plot.t + 40, ly - 34) : Math.min(plot.b - 12, ly + 60),
-          'text-anchor': lx > plot.r - 220 ? 'end' : 'middle',
-          fill: s.colour, 'font-size': 48, 'font-weight': 700, class: 'r-mono'
-        }, this._fmtBig(val)));
+      // ---- grid + y labels ----
+      const ticks = this._yTicks(sc);
+      ctx.textBaseline = 'middle';
+      ticks.forEach(v => {
+        const y = sc.yOf(v);
+        if (c.showGrid) {
+          ctx.strokeStyle = th.grid; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.moveTo(this.plot.l, y); ctx.lineTo(this.plot.r, y); ctx.stroke();
+        }
+        ctx.fillStyle = th.axis; ctx.font = "500 30px " + FD; ctx.textAlign = 'right';
+        ctx.fillText(this._fmt(v, { compact: true }), this.plot.l - 18, y);
       });
 
-      // update legend multiples (count up with progress)
-      if (this._legBtcVal) {
-        const bm = 1 + (c.bitcoin[this.N - 1] / 100 - 1) * eased;
-        const am = 1 + (c.asset[this.N - 1] / 100 - 1) * eased;
-        this._legBtcVal.textContent = fmtInt(bm) + '×';
-        this._legAssetVal.textContent = fmtInt(am) + '×';
+      // ---- x labels ----
+      ctx.fillStyle = th.axis; ctx.font = "500 30px " + FD; ctx.textAlign = 'center';
+      const maxI = Math.floor(sc.xMax + 1e-6);
+      const step = maxI > 8 ? 2 : 1;
+      for (let i = 0; i <= maxI; i += step) {
+        ctx.fillText(this._xLabel(i), sc.xOf(i), this.plot.b + 44);
+      }
+
+      // ---- series lines ----
+      ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+      this.series.forEach(s => {
+        const full = Math.floor(sc.t);
+        ctx.save();
+        if (c.glow) { ctx.shadowColor = s.color; ctx.shadowBlur = 20; }
+        ctx.strokeStyle = s.color; ctx.lineWidth = c.lineWidth;
+        ctx.beginPath();
+        ctx.moveTo(sc.xOf(0), sc.yOf(s.values[0]));
+        for (let i = 1; i <= full && i < s.values.length; i++) ctx.lineTo(sc.xOf(i), sc.yOf(s.values[i]));
+        const lead = this._valAt(s.values, sc.t);
+        ctx.lineTo(sc.xOf(sc.t), sc.yOf(lead));
+        ctx.stroke();
+        ctx.restore();
+      });
+
+      // ---- leading dots ----
+      const leads = this.series.map(s => {
+        const lead = this._valAt(s.values, sc.t);
+        return { s, x: sc.xOf(sc.t), y: sc.yOf(lead), v: lead };
+      });
+      if (c.showDots) {
+        leads.forEach(L => {
+          ctx.save();
+          if (c.glow) { ctx.shadowColor = L.s.color; ctx.shadowBlur = 18; }
+          ctx.fillStyle = L.s.color; ctx.beginPath(); ctx.arc(L.x, L.y, 15, 0, 7); ctx.fill();
+          ctx.restore();
+          ctx.fillStyle = th.bgTo; ctx.beginPath(); ctx.arc(L.x, L.y, 7, 0, 7); ctx.fill();
+        });
+      }
+
+      // ---- value labels (pills, drawn on top, de-collided) ----
+      this._drawLabels(ctx, leads, th, FD);
+
+      // ---- footer ----
+      this._drawFooter(ctx, th, FD, p);
+    }
+
+    _yTicks(sc) {
+      const out = [];
+      if (this.cfg.scale === 'log') {
+        const lo = Math.log10(Math.max(1, sc.vmin)), hi = Math.log10(sc.vmax);
+        for (let i = 0; i <= 4; i++) out.push(Math.pow(10, lo + (hi - lo) * i / 4));
+        return out;
+      }
+      const step = niceNum((sc.vmax - sc.vmin) / 4, true);
+      let start = Math.ceil(sc.vmin / step) * step;
+      if (sc.vmin <= 100 && start > 100) out.push(100);
+      for (let v = start; v <= sc.vmax + step * 0.01 && out.length < 8; v += step) out.push(v);
+      return out;
+    }
+
+    _xLabel(i) { return this.cfg.xMode === 'year' ? String(this.cfg.startYear + i) : String(i + 1); }
+
+    _drawLabels(ctx, leads, th, FD) {
+      ctx.font = "700 46px " + FD;
+      const items = leads.map(L => ({
+        color: L.s.color, x: L.x, dotY: L.y,
+        text: this._fmt(L.v), w: ctx.measureText(this._fmt(L.v)).width
+      }));
+      // desired y above the dot; de-collide downward
+      items.forEach(it => { it.y = it.dotY - 34; });
+      items.sort((a, b) => a.y - b.y);
+      const gap = 62;
+      for (let i = 1; i < items.length; i++) {
+        if (items[i].y - items[i - 1].y < gap) items[i].y = items[i - 1].y + gap;
+      }
+      items.forEach(it => {
+        it.y = clamp(it.y, this.plot.t + 30, this.plot.b - 6);
+        const padX = 16, padY = 9, h = 58;
+        let x = it.x + 22, anchor = 'left';
+        if (x + it.w + padX * 2 > this.plot.r) { x = it.x - 22 - it.w - padX * 2; }
+        // pill
+        ctx.fillStyle = th.pill;
+        this._rr(ctx, x, it.y - h / 2, it.w + padX * 2, h, 14); ctx.fill();
+        ctx.fillStyle = it.color; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
+        ctx.font = "700 46px " + FD;
+        ctx.fillText(it.text, x + padX, it.y + 2);
+      });
+    }
+
+    _drawFooter(ctx, th, FD, p) {
+      const eased = easeInOutCubic(clamp(p, 0, 1));
+      const t = eased * (this.N - 1);
+      const f = this.footer, cx = this.content;
+      // legend grid (2 columns)
+      const colW = (cx.r - cx.l) / 2;
+      ctx.textBaseline = 'alphabetic';
+      this.series.forEach((s, i) => {
+        const col = i % 2, row = Math.floor(i / 2);
+        const x = cx.l + col * colW, y = f.t + row * 96;
+        ctx.fillStyle = s.color; ctx.beginPath(); ctx.arc(x + 14, y + 8, 15, 0, 7); ctx.fill();
+        ctx.fillStyle = th.text; ctx.font = "600 42px " + FD; ctx.textAlign = 'left'; ctx.textBaseline = 'alphabetic';
+        ctx.fillText(s.name, x + 42, y + 20);
+        const curV = this._valAt(s.values, t); // matches the on-chart leading value
+        ctx.fillStyle = s.color; ctx.font = "700 62px " + FD;
+        ctx.fillText(this._fmt(curV), x + 42, y + 78);
+      });
+      // handle
+      let by = cx.b;
+      if (this.cfg.showDisclaimer) {
+        ctx.fillStyle = th.subtext; ctx.font = "400 24px " + FD; ctx.textAlign = 'center';
+        ctx.fillText(this.cfg.disclaimer, W / 2, by); by -= 40;
+      }
+      if (this.cfg.showHandle) {
+        ctx.fillStyle = th.text; ctx.font = "700 40px " + FD; ctx.textAlign = 'center';
+        ctx.fillText(this.cfg.handle, W / 2, by - (this.cfg.showDisclaimer ? 6 : 8));
       }
     }
 
+    // ---- playback ----
     play(onDone) {
       this.stop();
-      const dur = this.cfg.duration;
+      const dur = this.cfg.duration, hold = this.cfg.endHold;
       const start = performance.now();
       const tick = now => {
-        const p = Math.min(1, (now - start) / dur);
-        this.drawFrame(p);
-        if (p < 1) this._raf = requestAnimationFrame(tick);
+        const el = now - start;
+        this.drawFrame(Math.min(1, el / dur));
+        if (el < dur + hold) this._raf = requestAnimationFrame(tick);
         else { this._raf = null; if (onDone) onDone(); }
       };
       this._raf = requestAnimationFrame(tick);
     }
+    stop() { if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; } }
 
-    stop() {
-      if (this._raf) { cancelAnimationFrame(this._raf); this._raf = null; }
+    // ---- video export ----
+    async exportVideo(opt) {
+      opt = opt || {};
+      await this.ready();
+      if (!window.MediaRecorder || !this.canvas.captureStream) throw new Error('This browser cannot record canvas video. Use screen recording instead.');
+      const mime = pickMime();
+      const stream = this.canvas.captureStream(60);
+      const rec = new MediaRecorder(stream, mime.type ? { mimeType: mime.type, videoBitsPerSecond: 14000000 } : { videoBitsPerSecond: 14000000 });
+      const chunks = [];
+      rec.ondataavailable = e => { if (e.data && e.data.size) chunks.push(e.data); };
+      const stopped = new Promise(res => { rec.onstop = res; });
+      rec.start();
+      const dur = this.cfg.duration, hold = this.cfg.endHold;
+      const start = performance.now();
+      await new Promise(resolve => {
+        const loop = now => {
+          const el = now - start;
+          this.drawFrame(Math.min(1, el / dur));
+          if (opt.onProgress) opt.onProgress(Math.min(1, el / (dur + hold)));
+          if (el < dur + hold) requestAnimationFrame(loop); else resolve();
+        };
+        requestAnimationFrame(loop);
+      });
+      rec.stop();
+      await stopped;
+      return { blob: new Blob(chunks, { type: mime.type || 'video/webm' }), ext: mime.ext };
     }
   }
 

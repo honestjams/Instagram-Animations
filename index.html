@@ -12,95 +12,90 @@
 </head>
 <body>
 
-<!-- ================= EDITOR ================= -->
 <aside class="sidebar">
   <div class="brandbar">
     <img src="assets/brand/coinstash-horizontal-black.svg" alt="Coinstash">
     <span class="tag">Reel Studio</span>
   </div>
   <h1>Animated comparison charts</h1>
-  <p class="lead">Bitcoin vs any asset, styled in Coinstash brand colours and sized 9:16 for Instagram Reels. Edit, preview, then screen-record.</p>
+  <p class="lead">Compare Bitcoin against any number of assets, styled in Coinstash brand, sized 9:16 for Reels. Preview, record, or export a video.</p>
 
   <div class="control">
     <label for="preset">Comparison</label>
     <select id="preset"></select>
   </div>
 
-  <div class="control" id="value-source">
-    <label for="btc-data">Bitcoin series (index, start = 100)</label>
-    <textarea id="btc-data" rows="2" placeholder="100, 682, 1316, ..."></textarea>
-    <label for="asset-data" style="margin-top:10px">Asset series (index, start = 100)</label>
-    <textarea id="asset-data" rows="2" placeholder="100, 147, 187, ..."></textarea>
-    <p class="hint">Comma or space separated. Both series should have the same number of points; each starts at 100.</p>
-  </div>
-
-  <div class="control">
-    <label for="asset-name">Asset name</label>
-    <input id="asset-name" type="text" placeholder="Apple">
-  </div>
+  <fieldset>
+    <legend>Series</legend>
+    <div id="series-list"></div>
+    <button class="btn btn-ghost btn-sm" id="add-series" type="button">+ Add series</button>
+    <p class="hint">Each series is a list of numbers indexed to <strong>100</strong> at the start. Series are trimmed to the shortest length so they share one timeline.</p>
+  </fieldset>
 
   <fieldset>
     <legend>Text</legend>
-    <div class="control">
-      <label for="title">Title</label>
-      <input id="title" type="text" placeholder="Bitcoin vs Apple">
-    </div>
-    <div class="control">
-      <label for="subtitle">Subtitle</label>
-      <input id="subtitle" type="text" value="$100 invested — normalised to 100">
-    </div>
-    <div class="control">
-      <label for="handle">Handle</label>
-      <input id="handle" type="text" value="@coinstash">
-    </div>
-    <div class="control">
-      <label for="disclaimer">Disclaimer</label>
-      <input id="disclaimer" type="text" value="Past performance is not a reliable indicator of future results. Not financial advice.">
+    <div class="control"><label for="title">Title</label><input id="title" type="text"></div>
+    <div class="control"><label for="subtitle">Subtitle</label><input id="subtitle" type="text" value="% increase since start · indexed to 100"></div>
+    <div class="control"><label for="handle">Handle</label><input id="handle" type="text" value="@coinstash"></div>
+    <div class="control"><label for="disclaimer">Disclaimer</label><input id="disclaimer" type="text" value="Past performance is not a reliable indicator of future results. Not financial advice."></div>
+    <div class="toggles">
+      <label class="checkline"><input id="show-logo" type="checkbox" checked> Logo</label>
+      <label class="checkline"><input id="show-handle" type="checkbox" checked> Handle</label>
+      <label class="checkline"><input id="show-disclaimer" type="checkbox" checked> Disclaimer</label>
     </div>
   </fieldset>
 
   <fieldset>
-    <legend>Style</legend>
+    <legend>Values</legend>
     <div class="control">
-      <label for="theme">Theme</label>
-      <select id="theme"></select>
+      <label for="value-mode">Show figures as</label>
+      <select id="value-mode">
+        <option value="pct">% increase (recommended)</option>
+        <option value="multiple">Multiple (×)</option>
+        <option value="dollars">Dollars ($)</option>
+        <option value="index">Index (start = 100)</option>
+      </select>
     </div>
+    <div class="row2">
+      <div class="control" id="invest-row" hidden><label for="base-invest">Start $</label><input id="base-invest" type="number" value="100" min="1"></div>
+      <div class="control"><label for="decimals">Decimals</label><input id="decimals" type="number" value="0" min="0" max="2"></div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Chart</legend>
+    <div class="control"><label for="theme">Theme</label><select id="theme"></select></div>
     <div class="row2">
       <div class="control">
         <label for="scale">Scale</label>
-        <select id="scale">
-          <option value="linear">Linear (dramatic)</option>
-          <option value="log">Log (readable)</option>
-        </select>
+        <select id="scale"><option value="linear">Linear</option><option value="log">Log</option></select>
       </div>
-      <div class="control">
-        <label for="value-mode">Values</label>
-        <select id="value-mode">
-          <option value="money">Dollars</option>
-          <option value="index">Index (×100)</option>
-        </select>
-      </div>
-    </div>
-    <div class="control" id="invest-row">
-      <label for="base-invest">Starting investment ($)</label>
-      <input id="base-invest" type="number" value="100" min="1" step="1">
-    </div>
-    <div class="row2">
       <div class="control">
         <label for="xmode">X-axis</label>
-        <select id="xmode">
-          <option value="observation">Observation #</option>
-          <option value="year">Year</option>
-        </select>
-      </div>
-      <div class="control" id="year-row" hidden>
-        <label for="start-year">Start year</label>
-        <input id="start-year" type="number" value="2015" min="1900" step="1">
+        <select id="xmode"><option value="observation">Observation #</option><option value="year">Year</option></select>
       </div>
     </div>
-    <div class="control">
-      <label for="duration">Animation length (seconds)</label>
-      <input id="duration" type="number" value="5.2" min="1" max="30" step="0.1">
+    <div class="control" id="year-row" hidden><label for="start-year">Start year</label><input id="start-year" type="number" value="2015"></div>
+    <label class="checkline"><input id="zoom" type="checkbox" checked> Dynamic zoom (start tight, zoom out as values grow)</label>
+  </fieldset>
+
+  <fieldset>
+    <legend>Style</legend>
+    <div class="control"><label for="line-width">Line thickness: <span id="lw-val">11</span></label><input id="line-width" type="range" min="4" max="20" value="11"></div>
+    <div class="toggles">
+      <label class="checkline"><input id="glow" type="checkbox" checked> Glow</label>
+      <label class="checkline"><input id="show-dots" type="checkbox" checked> Dots</label>
+      <label class="checkline"><input id="show-grid" type="checkbox" checked> Grid</label>
+      <label class="checkline"><input id="safezone" type="checkbox" checked> Safe-zone padding</label>
+      <label class="checkline"><input id="guides" type="checkbox"> Show safe guides</label>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Timing</legend>
+    <div class="row2">
+      <div class="control"><label for="duration">Draw (s)</label><input id="duration" type="number" value="5.6" min="1" max="30" step="0.1"></div>
+      <div class="control"><label for="end-hold">Hold (s)</label><input id="end-hold" type="number" value="1.4" min="0" max="10" step="0.1"></div>
     </div>
   </fieldset>
 
@@ -108,25 +103,26 @@
     <label class="checkline"><input id="countdown-on" type="checkbox" checked> 3-2-1 countdown before recording</label>
     <button class="btn btn-primary" id="play">▶ Play / Replay</button>
     <button class="btn btn-record" id="record">● Record mode (clean 9:16)</button>
+    <button class="btn btn-export" id="export">⬇ Export video</button>
+    <p class="hint" id="export-note">Export produces MP4 on Safari, WebM on Chrome/Firefox. For guaranteed Instagram-ready MP4, use Safari or screen-record via Record mode.</p>
   </div>
 </aside>
 
-<!-- ================= STAGE ================= -->
 <main class="main">
   <div class="stage-tools">
     <button class="btn btn-ghost" id="fullscreen">⛶ Fullscreen</button>
   </div>
   <div class="stage-wrap" id="stage-wrap">
-    <svg id="stage-svg" role="img" aria-label="Animated comparison chart"></svg>
-    <img id="stage-logo" src="assets/brand/coinstash-horizontal-white.svg" alt="Coinstash">
+    <canvas id="stage-canvas" aria-label="Animated comparison chart"></canvas>
     <div id="countdown" hidden>3</div>
   </div>
-  <div class="status" id="status">Pick a comparison, then Play. Use Record mode + your screen recorder to capture the reel.</div>
+  <div class="status" id="status">Pick a comparison, then Play, Record, or Export.</div>
 </main>
 
-<button id="exit-record">✕ Exit record mode (Esc)</button>
+<button id="exit-record">✕ Exit (Esc)</button>
 <div id="record-hint">Space = replay · Esc = exit · Screen-record this window</div>
 
+<script src="assets/js/logos.js"></script>
 <script src="assets/js/brand.js"></script>
 <script src="assets/js/chart.js"></script>
 <script src="assets/js/app.js"></script>

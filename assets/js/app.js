@@ -1,148 +1,195 @@
 /*
- * App wiring: reads the editor form, drives the ReelChart, handles presets,
- * record mode (chrome-free stage + optional countdown), and fullscreen.
+ * App wiring: multi-series editor, live preview, playback, record mode,
+ * and one-click video export.
  */
 (function () {
-  const $ = sel => document.querySelector(sel);
-  const colors = COINSTASH.colors;
+  const $ = s => document.querySelector(s);
+  const chart = new ReelChart($('#stage-canvas'));
+  const sidebar = $('.sidebar');
 
-  const chart = new ReelChart($('#stage-svg'));
-
-  // ---- populate preset dropdown ----
+  // ---- dropdowns ----
   const presetSel = $('#preset');
   COINSTASH.presets.forEach(p => {
-    const o = document.createElement('option');
-    o.value = p.id; o.textContent = 'Bitcoin vs ' + p.name;
-    presetSel.append(o);
+    const o = document.createElement('option'); o.value = p.id; o.textContent = p.title; presetSel.append(o);
   });
-  const customOpt = document.createElement('option');
-  customOpt.value = 'custom'; customOpt.textContent = 'Custom (enter your own)';
-  presetSel.append(customOpt);
+  presetSel.append(Object.assign(document.createElement('option'), { value: 'custom', textContent: 'Custom…' }));
 
-  // ---- populate theme dropdown ----
   const themeSel = $('#theme');
-  Object.entries(COINSTASH.themes).forEach(([k, t]) => {
-    const o = document.createElement('option');
-    o.value = k; o.textContent = t.label;
-    themeSel.append(o);
-  });
+  Object.entries(COINSTASH.themes).forEach(([k, t]) =>
+    themeSel.append(Object.assign(document.createElement('option'), { value: k, textContent: t.label })));
 
-  function parseSeries(str) {
-    return str.split(/[\s,]+/).map(s => s.trim()).filter(Boolean).map(Number).filter(n => !isNaN(n));
+  const parseSeries = str => str.split(/[\s,]+/).map(s => s.trim()).filter(Boolean).map(Number).filter(n => !isNaN(n));
+
+  // ---- series rows ----
+  const seriesList = $('#series-list');
+  function paletteColor(i) { return COINSTASH.themes[themeSel.value].palette[i % 6]; }
+
+  function addSeriesRow(name, values, color, custom) {
+    const idx = seriesList.children.length;
+    const row = document.createElement('div');
+    row.className = 'series-row';
+    row.innerHTML =
+      '<div class="series-head">' +
+        '<input class="s-color" type="color" value="' + (color || paletteColor(idx)) + '"' + (custom ? ' data-custom="1"' : '') + '>' +
+        '<input class="s-name" type="text" placeholder="Series name" value="' + (name || '') + '">' +
+        '<button class="s-remove" type="button" title="Remove">✕</button>' +
+      '</div>' +
+      '<textarea class="s-values" rows="2" placeholder="100, 120, 150, …">' + (values || '') + '</textarea>';
+    seriesList.append(row);
   }
 
-  // Build the config object from the current form state and (re)render.
-  function build() {
-    const btc = parseSeries($('#btc-data').value);
-    const asset = parseSeries($('#asset-data').value);
-    if (btc.length < 2 || asset.length < 2) return null;
-    // Series must be equal length; trim to the shorter one.
-    const n = Math.min(btc.length, asset.length);
+  function readSeries() {
+    return [...seriesList.querySelectorAll('.series-row')].map(r => ({
+      name: r.querySelector('.s-name').value || 'Series',
+      values: parseSeries(r.querySelector('.s-values').value),
+      color: r.querySelector('.s-color').value
+    })).filter(s => s.values.length >= 2);
+  }
+
+  // ---- build config + render ----
+  function build(render) {
+    const series = readSeries();
+    if (!series.length) { $('#status').textContent = 'Add at least one series with 2+ values.'; return null; }
     const cfg = {
-      bitcoin: btc.slice(0, n),
-      asset: asset.slice(0, n),
-      assetName: $('#asset-name').value || 'Asset',
+      series,
       title: $('#title').value,
       subtitle: $('#subtitle').value,
       theme: COINSTASH.themes[themeSel.value],
+      valueMode: $('#value-mode').value,
+      baseInvest: parseFloat($('#base-invest').value) || 100,
+      decimals: parseInt($('#decimals').value, 10) || 0,
       scale: $('#scale').value,
+      zoom: $('#zoom').checked,
       xMode: $('#xmode').value,
       startYear: parseInt($('#start-year').value, 10) || 2015,
-      baseInvest: parseFloat($('#base-invest').value) || 100,
-      showMoney: $('#value-mode').value === 'money',
-      duration: (parseFloat($('#duration').value) || 5.2) * 1000,
+      duration: (parseFloat($('#duration').value) || 5.6) * 1000,
+      endHold: (parseFloat($('#end-hold').value) || 1.4) * 1000,
+      lineWidth: parseInt($('#line-width').value, 10) || 11,
+      showGrid: $('#show-grid').checked,
+      showDots: $('#show-dots').checked,
+      glow: $('#glow').checked,
+      showLogo: $('#show-logo').checked,
+      showHandle: $('#show-handle').checked,
+      showDisclaimer: $('#show-disclaimer').checked,
       handle: $('#handle').value || '@coinstash',
-      disclaimer: $('#disclaimer').value
+      disclaimer: $('#disclaimer').value,
+      safeZone: $('#safezone').checked,
+      guides: $('#guides').checked
     };
     chart.setConfig(cfg);
-    chart.render();
-    applyStageBg(cfg.theme);
+    if (render !== false) chart.drawFrame(1); // rest state = finished chart
     return cfg;
   }
 
-  function applyStageBg(theme) {
-    // Match the export wrapper + logo to the theme.
-    const logo = $('#stage-logo');
-    logo.src = COINSTASH.logoPaths[theme.logo];
-  }
-
-  // ---- preset selection ----
+  // ---- presets ----
   function loadPreset(id) {
-    if (id === 'custom') { $('#value-source').hidden = false; return; }
     const p = COINSTASH.presets.find(x => x.id === id);
     if (!p) return;
-    $('#btc-data').value = COINSTASH.BITCOIN.join(', ');
-    $('#asset-data').value = p.asset.join(', ');
-    $('#asset-name').value = p.name;
-    $('#title').value = 'Bitcoin vs ' + p.name;
+    seriesList.innerHTML = '';
+    p.series.forEach((s, i) => addSeriesRow(s.name, s.values.join(', '), paletteColor(i)));
+    $('#title').value = p.title;
     build();
   }
+  presetSel.addEventListener('change', () => { if (presetSel.value !== 'custom') loadPreset(presetSel.value); });
 
-  presetSel.addEventListener('change', () => loadPreset(presetSel.value));
-
-  // ---- live rebuild on any input ----
-  document.querySelectorAll('.control input, .control select, .control textarea')
-    .forEach(elm => elm.addEventListener('input', () => build()));
-
-  // year-mode toggle shows the start-year field
-  $('#xmode').addEventListener('change', () => {
-    $('#year-row').hidden = $('#xmode').value !== 'year';
+  $('#add-series').addEventListener('click', () => {
+    addSeriesRow('', '', paletteColor(seriesList.children.length));
+    presetSel.value = 'custom'; build();
   });
-  // money-mode toggle shows base-invest
-  $('#value-mode').addEventListener('change', () => {
-    $('#invest-row').hidden = $('#value-mode').value !== 'money';
+
+  // event delegation for series edits + removal + custom-colour flag
+  seriesList.addEventListener('input', e => {
+    if (e.target.classList.contains('s-color')) e.target.dataset.custom = '1';
+    build();
+  });
+  seriesList.addEventListener('click', e => {
+    if (e.target.classList.contains('s-remove')) {
+      if (seriesList.children.length > 1) { e.target.closest('.series-row').remove(); presetSel.value = 'custom'; build(); }
+    }
+  });
+
+  // recolour non-custom rows when theme changes
+  themeSel.addEventListener('change', () => {
+    [...seriesList.querySelectorAll('.series-row')].forEach((r, i) => {
+      const ci = r.querySelector('.s-color');
+      if (!ci.dataset.custom) ci.value = paletteColor(i);
+    });
+    build();
+  });
+
+  // ---- generic live rebuild ----
+  sidebar.addEventListener('input', e => {
+    if (e.target.closest('#series-list')) return; // handled above
+    if (e.target.id === 'xmode') $('#year-row').hidden = e.target.value !== 'year';
+    if (e.target.id === 'value-mode') $('#invest-row').hidden = e.target.value !== 'dollars';
+    if (e.target.id === 'line-width') $('#lw-val').textContent = e.target.value;
+    build();
   });
 
   // ---- playback ----
   const statusEl = $('#status');
   function play() {
-    const cfg = build();
-    if (!cfg) { statusEl.textContent = 'Enter at least 2 values per series.'; return; }
+    const cfg = build(false);
+    if (!cfg) return;
     statusEl.textContent = 'Playing…';
-    chart.play(() => { statusEl.textContent = 'Done — press Replay or record.'; });
+    chart.play(() => { statusEl.textContent = 'Done — Replay, Record, or Export video.'; });
   }
   $('#play').addEventListener('click', play);
 
-  // ---- record mode: hide chrome, center the 9:16 stage ----
+  // ---- record mode ----
   const body = document.body;
   $('#record').addEventListener('click', () => {
-    body.classList.add('record-mode');
-    const doIt = () => play();
-    if ($('#countdown-on').checked) runCountdown(doIt); else doIt();
+    body.classList.add('record-mode'); build(false);
+    const hint = $('#record-hint'); hint.style.opacity = '1';
+    setTimeout(() => { hint.style.opacity = '0'; }, 3500);
+    $('#countdown-on').checked ? runCountdown(play) : play();
   });
-  $('#exit-record').addEventListener('click', () => {
-    body.classList.remove('record-mode');
-    chart.stop();
-  });
+  $('#exit-record').addEventListener('click', () => { body.classList.remove('record-mode'); chart.stop(); build(); });
   document.addEventListener('keydown', e => {
-    if (e.key === 'Escape' && body.classList.contains('record-mode')) {
-      body.classList.remove('record-mode'); chart.stop();
-    }
-    if (e.key === ' ' && body.classList.contains('record-mode')) {
-      e.preventDefault(); play();
-    }
+    if (!body.classList.contains('record-mode')) return;
+    if (e.key === 'Escape') { body.classList.remove('record-mode'); chart.stop(); build(); }
+    if (e.key === ' ') { e.preventDefault(); play(); }
   });
-
-  // ---- fullscreen the stage ----
   $('#fullscreen').addEventListener('click', () => {
-    const stage = $('#stage-wrap');
-    if (!document.fullscreenElement) stage.requestFullscreen && stage.requestFullscreen();
+    const s = $('#stage-wrap');
+    if (!document.fullscreenElement) s.requestFullscreen && s.requestFullscreen();
     else document.exitFullscreen && document.exitFullscreen();
   });
-
   function runCountdown(done) {
-    const cd = $('#countdown');
-    let n = 3;
-    cd.hidden = false; cd.textContent = n;
-    const iv = setInterval(() => {
-      n--;
-      if (n <= 0) { clearInterval(iv); cd.hidden = true; done(); }
-      else cd.textContent = n;
-    }, 800);
+    const cd = $('#countdown'); let n = 3; cd.hidden = false; cd.textContent = n;
+    const iv = setInterval(() => { n--; if (n <= 0) { clearInterval(iv); cd.hidden = true; done(); } else cd.textContent = n; }, 800);
   }
 
+  // ---- export video ----
+  const exportBtn = $('#export');
+  exportBtn.addEventListener('click', async () => {
+    const cfg = build(false);
+    if (!cfg) return;
+    exportBtn.disabled = true;
+    const orig = exportBtn.textContent;
+    try {
+      const { blob, ext } = await chart.exportVideo({
+        onProgress: pr => { exportBtn.textContent = 'Exporting… ' + Math.round(pr * 100) + '%'; }
+      });
+      const slug = (cfg.title || 'coinstash-reel').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '');
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = slug + '.' + ext;
+      document.body.append(a); a.click(); a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      statusEl.textContent = 'Exported ' + a.download + (ext === 'webm' ? ' (WebM — see note below)' : '') + '.';
+    } catch (err) {
+      statusEl.textContent = 'Export failed: ' + err.message;
+    } finally {
+      exportBtn.disabled = false; exportBtn.textContent = orig;
+    }
+    chart.drawFrame(1);
+  });
+
   // ---- init ----
-  presetSel.value = COINSTASH.presets[0].id;
-  themeSel.value = 'purple';
-  loadPreset(presetSel.value);
+  chart.ready().then(() => {
+    themeSel.value = 'purple';
+    presetSel.value = COINSTASH.presets[0].id;
+    loadPreset(presetSel.value);
+  });
 })();
