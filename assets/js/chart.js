@@ -81,7 +81,7 @@
         scale: 'linear', zoom: true,
         xMode: 'observation', startYear: 2015,
         duration: 5600, endHold: 1400,
-        lineWidth: 11, showGrid: true, showDots: true, glow: true,
+        lineWidth: 11, showGrid: true, showDots: true, glow: true, logoSize: 48,
         showLogo: true, showHandle: true, showDisclaimer: true,
         handle: '@coinstash',
         disclaimer: 'Past performance is not a reliable indicator of future results. Not financial advice.',
@@ -298,7 +298,7 @@
       });
 
       // ---- leading markers: uploaded logo badge, else a dot ----
-      const BADGE_R = 38;
+      const BADGE_R = c.logoSize || 48;
       const leads = this.series.map(s => {
         const lead = this._valAt(s.values, sc.t);
         const hasLogo = !!(s.img && s.img.complete && s.img.naturalWidth);
@@ -347,7 +347,8 @@
       // desired y above the marker; de-collide downward
       items.forEach(it => { it.y = it.dotY - (it.r + 30); });
       items.sort((a, b) => a.y - b.y);
-      const gap = anyLogo ? 84 : 62;
+      const maxR = items.reduce((m, it) => Math.max(m, it.r), 15);
+      const gap = anyLogo ? maxR * 2 + 12 : 62;
       for (let i = 1; i < items.length; i++) {
         if (items[i].y - items[i - 1].y < gap) items[i].y = items[i - 1].y + gap;
       }

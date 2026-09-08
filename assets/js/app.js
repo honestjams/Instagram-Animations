@@ -98,6 +98,7 @@
       duration: (parseFloat($('#duration').value) || 5.6) * 1000,
       endHold: (parseFloat($('#end-hold').value) || 1.4) * 1000,
       lineWidth: parseInt($('#line-width').value, 10) || 11,
+      logoSize: parseInt($('#logo-size').value, 10) || 48,
       showGrid: $('#show-grid').checked,
       showDots: $('#show-dots').checked,
       glow: $('#glow').checked,
@@ -174,6 +175,7 @@
     if (e.target.id === 'xmode') $('#year-row').hidden = e.target.value !== 'year';
     if (e.target.id === 'value-mode') $('#invest-row').hidden = e.target.value !== 'dollars';
     if (e.target.id === 'line-width') $('#lw-val').textContent = e.target.value;
+    if (e.target.id === 'logo-size') $('#ls-val').textContent = e.target.value;
     build();
   });
 
