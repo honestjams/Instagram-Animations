@@ -95,6 +95,8 @@
       zoom: $('#zoom').checked,
       xMode: $('#xmode').value,
       startYear: parseInt($('#start-year').value, 10) || 2015,
+      xAxisLabel: $('#x-axis-label').value.trim(),
+      yAxisLabel: $('#y-axis-label').value.trim(),
       duration: (parseFloat($('#duration').value) || 5.6) * 1000,
       endHold: (parseFloat($('#end-hold').value) || 1.4) * 1000,
       lineWidth: parseInt($('#line-width').value, 10) || 11,

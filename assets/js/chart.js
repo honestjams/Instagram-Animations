@@ -92,6 +92,7 @@
         theme: null, valueMode: 'pct', baseInvest: 100, decimals: 0,
         scale: 'linear', zoom: true,
         xMode: 'observation', startYear: 2015,
+        xAxisLabel: '', yAxisLabel: '',
         duration: 5600, endHold: 1400,
         lineWidth: 11, showGrid: true, showDots: true, glow: true, logoSize: 48,
         showLogo: true, showHandle: true, showDisclaimer: true,
@@ -149,10 +150,12 @@
       this.footer = { legendH, discH, handleH, t: cx.b - (legendH + discH + handleH) };
 
       // Plot box. Leave a clear band under the x-axis so the axis labels never
-      // collide with the legend/figures below.
+      // collide with the legend/figures below. Reserve extra space for optional
+      // custom axis titles.
       this.plot = {
         l: cx.l + 96, r: cx.r - 10,
-        t: this.header.b + 18, b: this.footer.t - 112
+        t: this.header.b + 18 + (this.cfg.yAxisLabel ? 34 : 0),
+        b: this.footer.t - (this.cfg.xAxisLabel ? 150 : 112)
       };
       this.plot.w = this.plot.r - this.plot.l;
       this.plot.h = this.plot.b - this.plot.t;
@@ -284,6 +287,14 @@
         ctx.fillText(this._fmt(v, { compact: true }), this.plot.l - 18, y);
       });
 
+      // ---- custom y-axis title (above the axis, left-aligned) ----
+      if (c.yAxisLabel) {
+        ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
+        const fs = this._fitFont(ctx, c.yAxisLabel, 32, 20, '600', FB, this.plot.w);
+        ctx.fillStyle = th.subtext; ctx.font = '600 ' + fs + 'px ' + FB;
+        ctx.fillText(c.yAxisLabel, this.plot.l, this.plot.t - 16);
+      }
+
       // ---- x labels ----
       ctx.fillStyle = th.axis; ctx.font = "500 30px " + FB; ctx.textAlign = 'center';
       const maxI = Math.floor(sc.xMax + 1e-6);
@@ -293,6 +304,12 @@
       const step = Math.max(1, Math.ceil((maxI + 1) / maxTicks));
       for (let i = 0; i <= maxI; i += step) {
         ctx.fillText(this._xLabel(i), sc.xOf(i), this.plot.b + 48);
+      }
+      // ---- custom x-axis title (centred under the tick labels) ----
+      if (c.xAxisLabel) {
+        const fs = this._fitFont(ctx, c.xAxisLabel, 32, 20, '600', FB, this.plot.w);
+        ctx.fillStyle = th.subtext; ctx.font = '600 ' + fs + 'px ' + FB; ctx.textAlign = 'center';
+        ctx.fillText(c.xAxisLabel, (this.plot.l + this.plot.r) / 2, this.plot.b + 100);
       }
 
       // ---- series lines ----
@@ -350,6 +367,14 @@
     }
 
     _xLabel(i) { return this.cfg.xMode === 'year' ? String(this.cfg.startYear + i) : String(i + 1); }
+
+    // Largest font size (base→min) at which `text` fits within maxW.
+    _fitFont(ctx, text, base, min, weight, fam, maxW) {
+      ctx.font = weight + ' ' + base + 'px ' + fam;
+      const w = ctx.measureText(text).width;
+      if (w <= maxW) return base;
+      return Math.max(min, Math.floor(base * maxW / w));
+    }
 
     _drawLabels(ctx, leads, th) {
       ctx.font = "600 46px " + FH;
