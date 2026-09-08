@@ -1,4 +1,19 @@
 /* ---- Coinstash Reel Studio ---- */
+
+/* Brand fonts: PP Telegraf (headings) + FK Grotesk Neue (body). */
+@font-face { font-family: 'PP Telegraf'; font-weight: 400; font-style: normal; font-display: swap;
+  src: url('../fonts/PPTelegrafCoinstash-Regular.woff2') format('woff2'), url('../fonts/PPTelegrafCoinstash-Regular.woff') format('woff'); }
+@font-face { font-family: 'PP Telegraf'; font-weight: 600; font-style: normal; font-display: swap;
+  src: url('../fonts/PPTelegrafCoinstash-Semibold.woff2') format('woff2'), url('../fonts/PPTelegrafCoinstash-Semibold.woff') format('woff'); }
+@font-face { font-family: 'PP Telegraf'; font-weight: 800; font-style: normal; font-display: swap;
+  src: url('../fonts/PPTelegrafCoinstash-Black.woff2') format('woff2'), url('../fonts/PPTelegrafCoinstash-Black.woff') format('woff'); }
+@font-face { font-family: 'FK Grotesk Neue'; font-weight: 400; font-style: normal; font-display: swap;
+  src: url('../fonts/FKGroteskNeue-Regular.woff2') format('woff2'), url('../fonts/FKGroteskNeue-Regular.woff') format('woff'); }
+@font-face { font-family: 'FK Grotesk Neue'; font-weight: 500; font-style: normal; font-display: swap;
+  src: url('../fonts/FKGroteskNeue-Medium.woff2') format('woff2'), url('../fonts/FKGroteskNeue-Medium.woff') format('woff'); }
+@font-face { font-family: 'FK Grotesk Neue'; font-weight: 700; font-style: normal; font-display: swap;
+  src: url('../fonts/FKGroteskNeue-Bold.woff2') format('woff2'), url('../fonts/FKGroteskNeue-Bold.woff') format('woff'); }
+
 :root {
   --purple-bright: #5C5BD5;
   --purple-dark: #373184;
@@ -9,10 +24,9 @@
   --ink: #1b1740;
   --panel: #ffffff;
   --line: #e4e2f2;
-  /* PP Telegraf is the brand face (commercial). Space Grotesk is a licence-free
-     geometric-grotesque stand-in; drop PP Telegraf files into assets/fonts and
-     add it to the front of this stack to match the brand exactly. */
-  --font: 'PP Telegraf', 'Space Grotesk', 'Söhne', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  --font-head: 'PP Telegraf', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  --font-body: 'FK Grotesk Neue', system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+  --font: var(--font-body);
 }
 
 * { box-sizing: border-box; }
@@ -42,7 +56,7 @@ body {
   font-size: 11px; font-weight: 700; letter-spacing: .14em; text-transform: uppercase;
   color: #fff; background: var(--purple-bright); padding: 4px 9px; border-radius: 999px;
 }
-.sidebar h1 { font-size: 20px; margin: 14px 0 2px; letter-spacing: -.01em; }
+.sidebar h1 { font-family: var(--font-head); font-weight: 800; font-size: 20px; margin: 14px 0 2px; letter-spacing: -.01em; }
 .sidebar .lead { color: #6a6690; font-size: 13px; margin: 0 0 18px; line-height: 1.45; }
 
 .control { margin-bottom: 15px; }
@@ -57,7 +71,7 @@ body {
 .control input:focus, .control select:focus, .control textarea:focus {
   outline: 2px solid var(--purple-light); border-color: var(--purple-bright);
 }
-.control textarea { resize: vertical; min-height: 56px; font-family: 'Space Grotesk', monospace; font-size: 13px; }
+.control textarea { resize: vertical; min-height: 56px; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; }
 .control .hint { font-size: 11px; color: #8a86a8; margin-top: 5px; }
 .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 fieldset {
@@ -92,7 +106,7 @@ input[type="color"] { padding: 0; height: 36px; width: 40px; border-radius: 8px;
 .series-head .s-name { flex: 1; padding: 8px 10px; }
 .s-remove { flex: 0 0 auto; border: 1px solid var(--line); background: #fff; border-radius: 8px; width: 34px; height: 34px; cursor: pointer; color: #8a86a8; font-size: 14px; }
 .s-remove:hover { background: #ffe9e6; color: var(--coral); border-color: var(--coral); }
-.series-row textarea { width: 100%; font-family: 'Space Grotesk', monospace; font-size: 13px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; resize: vertical; box-sizing: border-box; }
+.series-row textarea { width: 100%; font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; font-size: 13px; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; background: #fff; resize: vertical; box-sizing: border-box; }
 
 /* per-series logo upload */
 .s-logo { position: relative; flex: 0 0 auto; }
@@ -129,8 +143,7 @@ input[type="color"] { padding: 0; height: 36px; width: 40px; border-radius: 8px;
 .stage-tools button { font-size: 13px; padding: 9px 14px; }
 
 /* Fonts used by the SVG text nodes */
-.r-head { font-family: var(--font); }
-.r-mono { font-family: 'Space Grotesk', var(--font); }
+
 
 /* ---- record mode ---- */
 #exit-record, #record-hint { display: none; }

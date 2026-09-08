@@ -85,11 +85,13 @@ the frame can be captured via `canvas.captureStream()`.
 - **Colours** from the Coinstash design system (Purple Bright `#5C5BD5`, Purple
   Dark `#373184`, Coral `#FF7262`, Mint `#B2FFBE`, Pine `#527658`, Umber
   `#C46751`) — see `assets/js/brand.js`.
-- **Type:** the brand face is **PP Telegraf** (commercial). This app ships
-  **Space Grotesk** (free) as a close stand-in. To match exactly, add PP Telegraf
-  web-font files under `assets/fonts/`, register them with `@font-face` in
-  `style.css` (it's already first in the `--font` stack), and update the
-  `FD` font string in `chart.js`.
+- **Type:** the licensed brand fonts ship with the app in `assets/fonts/` —
+  **PP Telegraf** for headings/figures (title, leading value labels, legend
+  figures, handle) and **FK Grotesk Neue** for body (subtitle, axes, legend
+  names, disclaimer). They're declared via `@font-face` in `style.css`
+  (`--font-head` / `--font-body`) and referenced on the canvas through the `FH`
+  (heading) and `FB` (body) constants in `chart.js`; `ReelChart.ready()`
+  preloads the exact faces so exported video renders with the brand type.
 
 ## Adding comparisons
 

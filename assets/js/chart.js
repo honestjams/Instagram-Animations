@@ -8,6 +8,9 @@
  */
 (function () {
   const W = 1080, H = 1920;
+  // Brand fonts: PP Telegraf (headings/figures) + FK Grotesk Neue (body).
+  const FH = "'PP Telegraf', system-ui, sans-serif";      // heading / display
+  const FB = "'FK Grotesk Neue', system-ui, sans-serif";  // body / labels
   const easeInOutCubic = t => t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
   const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
 
@@ -64,7 +67,16 @@
 
     // Resolve once fonts + brand logos + uploaded series logos are ready.
     async ready() {
-      try { if (document.fonts && document.fonts.ready) await document.fonts.ready; } catch (e) {}
+      try {
+        if (document.fonts) {
+          // explicitly kick off loading the exact faces the canvas draws with
+          await Promise.all([
+            "800 100px 'PP Telegraf'", "600 60px 'PP Telegraf'",
+            "500 40px 'FK Grotesk Neue'", "400 30px 'FK Grotesk Neue'"
+          ].map(f => document.fonts.load(f).catch(() => {})));
+          if (document.fonts.ready) await document.fonts.ready;
+        }
+      } catch (e) {}
       const need = window.COINSTASH_LOGOS ? Object.keys(window.COINSTASH_LOGOS).filter(k => k !== 'aspect') : [];
       const assets = this._assetImgs || [];
       const start = performance.now();
@@ -217,7 +229,6 @@
 
     drawFrame(p) {
       const ctx = this.ctx, c = this.cfg, th = c.theme, sc = this._scales(p);
-      const FD = "'Space Grotesk', system-ui, sans-serif";
 
       // background
       const g = ctx.createLinearGradient(0, 0, 0, H);
@@ -234,9 +245,9 @@
 
       // ---- header ----
       const cw = this.content.r - this.content.l;
-      const fit = (text, base, min, weight) => {
+      const fit = (text, base, min, weight, fam) => {
         let fs = base;
-        ctx.font = weight + ' ' + fs + 'px ' + FD;
+        ctx.font = weight + ' ' + fs + 'px ' + fam;
         const w = ctx.measureText(text).width;
         if (w > cw * 0.99) fs = Math.max(min, Math.floor(fs * cw * 0.99 / w));
         return fs;
@@ -249,14 +260,14 @@
       } else { hy += 18; }
       ctx.textAlign = 'center'; ctx.textBaseline = 'alphabetic';
       if (c.title) {
-        const fs = fit(c.title, 104, 52, '700');
-        ctx.fillStyle = th.text; ctx.font = '700 ' + fs + 'px ' + FD;
+        const fs = fit(c.title, 104, 52, '800', FH);
+        ctx.fillStyle = th.text; ctx.font = '800 ' + fs + 'px ' + FH;
         ctx.fillText(c.title, W / 2, hy + fs * 0.9);
         hy += fs * 0.9 + 12;
       }
       if (c.subtitle) {
-        const fs = fit(c.subtitle, 44, 26, '500');
-        ctx.fillStyle = th.subtext; ctx.font = '500 ' + fs + 'px ' + FD;
+        const fs = fit(c.subtitle, 44, 26, '500', FB);
+        ctx.fillStyle = th.subtext; ctx.font = '500 ' + fs + 'px ' + FB;
         ctx.fillText(c.subtitle, W / 2, hy + fs);
       }
 
@@ -269,12 +280,12 @@
           ctx.strokeStyle = th.grid; ctx.lineWidth = 2;
           ctx.beginPath(); ctx.moveTo(this.plot.l, y); ctx.lineTo(this.plot.r, y); ctx.stroke();
         }
-        ctx.fillStyle = th.axis; ctx.font = "500 30px " + FD; ctx.textAlign = 'right';
+        ctx.fillStyle = th.axis; ctx.font = "500 30px " + FB; ctx.textAlign = 'right';
         ctx.fillText(this._fmt(v, { compact: true }), this.plot.l - 18, y);
       });
 
       // ---- x labels ----
-      ctx.fillStyle = th.axis; ctx.font = "500 30px " + FD; ctx.textAlign = 'center';
+      ctx.fillStyle = th.axis; ctx.font = "500 30px " + FB; ctx.textAlign = 'center';
       const maxI = Math.floor(sc.xMax + 1e-6);
       // thin labels so they never overlap: reserve label width + gap per tick
       const lw = Math.max(ctx.measureText(this._xLabel(maxI)).width, ctx.measureText(this._xLabel(0)).width);
@@ -318,10 +329,10 @@
       });
 
       // ---- value labels (pills, drawn on top, de-collided) ----
-      this._drawLabels(ctx, leads, th, FD);
+      this._drawLabels(ctx, leads, th);
 
       // ---- footer ----
-      this._drawFooter(ctx, th, FD, p);
+      this._drawFooter(ctx, th, p);
     }
 
     _yTicks(sc) {
@@ -340,8 +351,8 @@
 
     _xLabel(i) { return this.cfg.xMode === 'year' ? String(this.cfg.startYear + i) : String(i + 1); }
 
-    _drawLabels(ctx, leads, th, FD) {
-      ctx.font = "700 46px " + FD;
+    _drawLabels(ctx, leads, th) {
+      ctx.font = "600 46px " + FH;
       const anyLogo = leads.some(L => L.hasLogo);
       const items = leads.map(L => ({
         color: L.s.color, x: L.x, dotY: L.y, r: L.r || 15,
@@ -363,7 +374,7 @@
         ctx.fillStyle = th.pill;
         this._rr(ctx, x, it.y - h / 2, pillW, h, 14); ctx.fill();
         ctx.fillStyle = it.color; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-        ctx.font = "700 46px " + FD;
+        ctx.font = "600 46px " + FH;
         ctx.fillText(it.text, x + padX, it.y + 2);
       });
     }
@@ -389,26 +400,27 @@
     // Pre-compute legend layout: columns, per-item font sizing, wrapped name
     // lines, and total height. Runs in _layout so the footer can be sized.
     _computeLegend(cw) {
-      const ctx = this.ctx, FD = "'Space Grotesk', system-ui, sans-serif";
+      const ctx = this.ctx;
       const n = this.series.length;
       const dotGap = 44, nameBase = 42, nameMin = 26, nameLH = 46;
       const valBase = 62, valMin = 40;
-      const measure = (txt, weight, fs) => { ctx.font = weight + ' ' + fs + 'px ' + FD; return ctx.measureText(txt).width; };
+      // names in body font (FK Grotesk 500), figures in heading font (Telegraf 600)
+      const measure = (txt, weight, fs, fam) => { ctx.font = weight + ' ' + fs + 'px ' + fam; return ctx.measureText(txt).width; };
 
       // 2 columns only if every name fits one line (at the min size) in a half cell.
       const cellW2 = cw / 2 - dotGap - 14;
-      const fits2 = n >= 2 && this.series.every(s => measure(s.name, '600', nameMin) <= cellW2);
+      const fits2 = n >= 2 && this.series.every(s => measure(s.name, '500', nameMin, FB) <= cellW2);
       const cols = fits2 ? 2 : 1;
       const cellW = cols === 2 ? cellW2 : (cw - dotGap - 14);
 
       const items = this.series.map(s => {
         let nf = nameBase;
-        while (nf > nameMin && measure(s.name, '600', nf) > cellW) nf -= 2;
+        while (nf > nameMin && measure(s.name, '500', nf, FB) > cellW) nf -= 2;
         let lines = [s.name];
-        if (measure(s.name, '600', nf) > cellW) lines = this._wrap(s.name, '600 ' + nf + 'px ' + FD, cellW, 2);
+        if (measure(s.name, '500', nf, FB) > cellW) lines = this._wrap(s.name, '500 ' + nf + 'px ' + FB, cellW, 2);
         let vf = valBase;
         const finalText = this._fmt(s.values[this.N - 1]);
-        while (vf > valMin && measure(finalText, '700', vf) > cellW) vf -= 2;
+        while (vf > valMin && measure(finalText, '600', vf, FH) > cellW) vf -= 2;
         const blockH = 24 + (lines.length - 1) * nameLH + 66 + 30;
         return { s, nf, lines, vf, nameLH, blockH };
       });
@@ -448,7 +460,7 @@
       return s + '…';
     }
 
-    _drawFooter(ctx, th, FD, p) {
+    _drawFooter(ctx, th, p) {
       const eased = easeInOutCubic(clamp(p, 0, 1));
       const t = eased * (this.N - 1);
       const f = this.footer, cx = this.content, leg = this.legend;
@@ -461,10 +473,10 @@
           if (idx >= this.series.length) continue;
           const it = leg.items[idx], s = it.s, x = cx.l + c * colW;
           ctx.fillStyle = s.color; ctx.beginPath(); ctx.arc(x + 14, rowY + 12, 15, 0, 7); ctx.fill();
-          ctx.fillStyle = th.text; ctx.textAlign = 'left'; ctx.font = '600 ' + it.nf + 'px ' + FD;
+          ctx.fillStyle = th.text; ctx.textAlign = 'left'; ctx.font = '500 ' + it.nf + 'px ' + FB;
           it.lines.forEach((ln, li) => ctx.fillText(ln, x + leg.dotGap, rowY + 24 + li * it.nameLH));
           const curV = this._valAt(s.values, t);
-          ctx.fillStyle = s.color; ctx.font = '700 ' + it.vf + 'px ' + FD;
+          ctx.fillStyle = s.color; ctx.font = '600 ' + it.vf + 'px ' + FH;
           ctx.fillText(this._fmt(curV), x + leg.dotGap, rowY + 24 + (it.lines.length - 1) * it.nameLH + 66);
         }
         rowY += leg.rowHeights[r];
@@ -472,11 +484,11 @@
       // handle
       let by = cx.b;
       if (this.cfg.showDisclaimer) {
-        ctx.fillStyle = th.subtext; ctx.font = "400 24px " + FD; ctx.textAlign = 'center';
+        ctx.fillStyle = th.subtext; ctx.font = "400 24px " + FB; ctx.textAlign = 'center';
         ctx.fillText(this.cfg.disclaimer, W / 2, by); by -= 40;
       }
       if (this.cfg.showHandle) {
-        ctx.fillStyle = th.text; ctx.font = "700 40px " + FD; ctx.textAlign = 'center';
+        ctx.fillStyle = th.text; ctx.font = "600 40px " + FH; ctx.textAlign = 'center';
         ctx.fillText(this.cfg.handle, W / 2, by - (this.cfg.showDisclaimer ? 6 : 8));
       }
     }
