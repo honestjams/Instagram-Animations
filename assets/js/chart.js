@@ -122,10 +122,11 @@
       const handleH = this.cfg.showHandle ? 52 : 0;
       this.footer = { legendH, discH, handleH, t: cx.b - (legendH + discH + handleH) };
 
-      // Plot box
+      // Plot box. Leave a clear band under the x-axis so the axis labels never
+      // collide with the legend/figures below.
       this.plot = {
         l: cx.l + 96, r: cx.r - 10,
-        t: this.header.b + 18, b: this.footer.t - 44
+        t: this.header.b + 18, b: this.footer.t - 112
       };
       this.plot.w = this.plot.r - this.plot.l;
       this.plot.h = this.plot.b - this.plot.t;
@@ -263,7 +264,7 @@
       const maxI = Math.floor(sc.xMax + 1e-6);
       const step = maxI > 8 ? 2 : 1;
       for (let i = 0; i <= maxI; i += step) {
-        ctx.fillText(this._xLabel(i), sc.xOf(i), this.plot.b + 44);
+        ctx.fillText(this._xLabel(i), sc.xOf(i), this.plot.b + 48);
       }
 
       // ---- series lines ----
