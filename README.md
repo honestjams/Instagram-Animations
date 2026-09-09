@@ -104,12 +104,43 @@ Add to `COINSTASH.presets` in `assets/js/brand.js`:
 ```js
 {
   id: 'gold', title: 'Bitcoin vs Gold',
+  subtitle: '% increase since 2016 · indexed to 100',   // optional
+  startYear: 2016,                                      // optional
+  scale: 'log',                                         // optional
   series: [
     { name: 'Bitcoin', values: COINSTASH.BITCOIN.slice() },
     { name: 'Gold',    values: [100, /* …, indexed to 100 */ ] }
   ]
 }
 ```
+
+Optional preset fields, all applied when the preset is selected. Omit any and
+the editor keeps whatever you already have set:
+
+| Field | Effect |
+| --- | --- |
+| `subtitle` | Overrides the subtitle copy |
+| `startYear` | Sets the first x-axis year and switches **X-axis** to *Year* |
+| `scale` | `'linear'` or `'log'` |
+| `series[].invert` | Pre-ticks **Invert** on that series row |
+
+**Every series in a preset must start at the same year.** Series are trimmed to
+the shortest series, so mixing a 2016-based line with a 2020-based one silently
+truncates the whole chart. Presets with a later base (`altcoins` 2018, `lego`
+2017) are kept separate for this reason.
+
+Most presets set `scale: 'log'` because Bitcoin's index reaches ~13,500 while
+everyday items top out near 175 — on a linear axis the slower lines flatten
+onto the baseline.
+
+### Data provenance
+
+Crypto, stocks and benchmarks are computed from daily closes; stocks and indices
+are split- and dividend-adjusted, so they are total return rather than share
+price. Everyday Australian items are built from ABS CPI category sub-indices.
+The `collectibles` preset contains **modelled years** interpolated between real
+sales, and its subtitle says so — keep that visible and extend the disclaimer
+rather than relying on "past performance" alone.
 
 If you regenerate or replace the logos in `assets/brand/`, rebuild
 `assets/js/logos.js` (it embeds them as data URIs so they can be drawn onto the
