@@ -24,7 +24,7 @@
   const seriesList = $('#series-list');
   function paletteColor(i) { return COINSTASH.themes[themeSel.value].palette[i % 6]; }
 
-  function addSeriesRow(name, values, color, custom) {
+  function addSeriesRow(name, values, color, custom, invert) {
     const idx = seriesList.children.length;
     const row = document.createElement('div');
     row.className = 'series-row';
@@ -40,7 +40,7 @@
         '<button class="s-remove" type="button" title="Remove series">✕</button>' +
       '</div>' +
       '<textarea class="s-values" rows="2" placeholder="100, 120, 150, …">' + (values || '') + '</textarea>' +
-      '<label class="checkline s-invert-row"><input class="s-invert" type="checkbox"> Invert (mirror below zero — a falling cost as the other rises)</label>';
+      '<label class="checkline s-invert-row"><input class="s-invert" type="checkbox"' + (invert ? ' checked' : '') + '> Invert (mirror below zero — a falling cost as the other rises)</label>';
     seriesList.append(row);
   }
 
@@ -128,8 +128,17 @@
     const p = COINSTASH.presets.find(x => x.id === id);
     if (!p) return;
     seriesList.innerHTML = '';
-    p.series.forEach((s, i) => addSeriesRow(s.name, s.values.join(', '), paletteColor(i)));
+    p.series.forEach((s, i) => addSeriesRow(s.name, s.values.join(', '), paletteColor(i), false, s.invert));
     $('#title').value = p.title;
+    // Optional per-preset presentation. Presets that omit these keep whatever
+    // the user currently has selected.
+    if (p.subtitle) $('#subtitle').value = p.subtitle;
+    if (p.scale) $('#scale').value = p.scale;
+    if (p.startYear) {
+      $('#xmode').value = 'year';
+      $('#start-year').value = p.startYear;
+      $('#year-row').hidden = false;
+    }
     build();
   }
   presetSel.addEventListener('change', () => { if (presetSel.value !== 'custom') loadPreset(presetSel.value); });
