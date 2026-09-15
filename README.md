@@ -31,6 +31,14 @@ brand palette, logos, and typography.
   dots, x-axis as observations or years, animation draw/hold timing, and toggles
   for the logo, handle, and disclaimer.
 
+## Two tools
+
+- **Charts** (`index.html`) — the animated comparison-chart studio described below.
+- **Boss Messages** (`messages.html`) — a fake iMessage screenshot maker: edit the
+  "boss" message and your reply (plus name, avatar, timestamp, badges) and export
+  a high-res 9:16 PNG for relatable Reels. It's a meme template; all content is
+  user-supplied. Switch between the two via the nav in the sidebar.
+
 ## Quick start
 
 No build step. Static HTML/CSS/JS.

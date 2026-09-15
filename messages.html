@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Boss Message Maker — fake iMessage screenshots</title>
+<meta name="description" content="Make editable fake iMessage screenshots of your boss for Instagram content.">
+<link rel="stylesheet" href="assets/css/style.css">
+<link rel="stylesheet" href="assets/css/messages.css">
+</head>
+<body>
+
+<aside class="sidebar">
+  <div class="brandbar">
+    <img src="assets/brand/coinstash-horizontal-black.svg" alt="Coinstash">
+    <span class="tag">Reel Studio</span>
+  </div>
+  <nav class="studio-nav">
+    <a href="index.html">Charts</a>
+    <a href="messages.html" class="active">Boss Messages</a>
+  </nav>
+  <h1>Fake boss message</h1>
+  <p class="lead">Build an iMessage-style screenshot of your "boss" asking for something, plus your reply. Great for relatable Reels. Nothing here is real — it's a meme template.</p>
+
+  <fieldset>
+    <legend>Contact</legend>
+    <div class="control"><label for="m-name">Name</label><input id="m-name" type="text" value="Boss"></div>
+    <div class="row2">
+      <div class="control"><label for="m-unread">Back badge</label><input id="m-unread" type="text" value="43"></div>
+      <div class="control"><label for="m-time">Status time</label><input id="m-time" type="text" value="3:35"></div>
+    </div>
+    <div class="control">
+      <label>Avatar</label>
+      <div class="avatar-picker">
+        <span class="avatar-preview" id="m-avatar-preview"></span>
+        <button class="btn btn-ghost btn-sm" id="m-avatar-btn" type="button" style="width:auto;margin:0;flex:1">Upload photo</button>
+        <button class="btn btn-ghost btn-sm" id="m-avatar-clear" type="button" style="width:auto;margin:0" hidden>Clear</button>
+        <input id="m-avatar-input" type="file" accept="image/*" hidden>
+      </div>
+    </div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Conversation</legend>
+    <div class="control">
+      <label for="m-received">Boss message (received)</label>
+      <textarea id="m-received" rows="4">Hey, can you please post a new reel compilation of all our recent videos? Needs to be done today. Thanks!</textarea>
+    </div>
+    <div class="control">
+      <label for="m-timestamp">Timestamp</label>
+      <input id="m-timestamp" type="text" value="Sun, 21 Oct at 10:15 am">
+    </div>
+    <div class="control">
+      <label for="m-reply">Your reply (sent)</label>
+      <textarea id="m-reply" rows="2">Sure thing boss</textarea>
+    </div>
+    <div class="toggles">
+      <label class="checkline"><input id="m-show-received" type="checkbox" checked> Show boss message</label>
+      <label class="checkline"><input id="m-show-timestamp" type="checkbox" checked> Show timestamp</label>
+      <label class="checkline"><input id="m-show-reply" type="checkbox" checked> Show reply</label>
+      <label class="checkline"><input id="m-delivered" type="checkbox"> "Delivered" under reply</label>
+    </div>
+  </fieldset>
+
+  <div class="actions">
+    <button class="btn btn-primary" id="m-export">⬇ Download PNG</button>
+    <p class="hint">Exports a high-resolution 9:16 PNG (2160×3840) ready to drop into a Reel, or just screenshot the preview.</p>
+  </div>
+</aside>
+
+<main class="main">
+  <div class="stage-tools">
+    <button class="btn btn-ghost" id="m-fullscreen">⛶ Fullscreen</button>
+  </div>
+  <div class="stage-wrap" id="m-stage">
+    <!-- The phone screen is a fixed 1080x1920 element, scaled to fit the stage. -->
+    <div class="phone" id="phone">
+      <div class="statusbar">
+        <div class="sb-left">
+          <span class="sb-time" id="v-time">3:35</span>
+          <svg class="sb-dnd" viewBox="0 0 24 24" width="30" height="30" aria-hidden="true"><path fill="currentColor" d="M12 22a2.5 2.5 0 0 0 2.45-2h-4.9A2.5 2.5 0 0 0 12 22Zm7-5-2-2v-4a5 5 0 0 0-4-4.9V6a1 1 0 0 0-2 0v.1A5 5 0 0 0 7 11v4l-2 2v1h14v-1Z"/><line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>
+        </div>
+        <div class="sb-right">
+          <svg class="sb-ico" viewBox="0 0 78 24" width="60" height="20" aria-hidden="true">
+            <rect x="0"  y="12" width="12" height="12" rx="3" fill="currentColor"/>
+            <rect x="20" y="8"  width="12" height="16" rx="3" fill="currentColor"/>
+            <rect x="40" y="4"  width="12" height="20" rx="3" fill="currentColor" opacity="0.3"/>
+            <rect x="60" y="0"  width="12" height="24" rx="3" fill="currentColor" opacity="0.3"/>
+          </svg>
+          <svg class="sb-ico" viewBox="0 0 24 18" width="34" height="26" aria-hidden="true"><path fill="currentColor" d="M12 3.5c3.4 0 6.5 1.3 8.9 3.5l1.6-1.7C19.7 2.6 16 1 12 1S4.3 2.6 1.5 5.3L3.1 7C5.5 4.8 8.6 3.5 12 3.5Zm0 4.5c2.2 0 4.2.8 5.7 2.2l1.6-1.7A11 11 0 0 0 12 5.5 11 11 0 0 0 4.7 8.5l1.6 1.7A8.4 8.4 0 0 1 12 8Zm0 4.5c1 0 1.9.4 2.6 1l-2.6 2.8-2.6-2.8c.7-.6 1.6-1 2.6-1Z"/></svg>
+          <svg class="sb-ico sb-batt" viewBox="0 0 52 24" width="52" height="24" aria-hidden="true">
+            <rect x="1" y="3" width="42" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="2" opacity="0.5"/>
+            <rect x="45" y="8" width="4" height="8" rx="2" fill="currentColor" opacity="0.5"/>
+            <rect x="3.5" y="5.5" width="37" height="13" rx="3" fill="#34c759"/>
+            <path d="M24 5 19 13h4l-1 6 5-8h-4l1-6Z" fill="#000"/>
+          </svg>
+        </div>
+      </div>
+
+      <div class="header">
+        <div class="hd-back">
+          <svg viewBox="0 0 24 24" width="60" height="60" aria-hidden="true"><path fill="none" stroke="#1e8bff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round" d="M15 5 8 12l7 7"/></svg>
+          <span class="hd-badge" id="v-unread">43</span>
+        </div>
+        <div class="hd-center">
+          <span class="hd-avatar" id="v-avatar"></span>
+          <span class="hd-name"><span id="v-name">Boss</span> <span class="hd-chev">›</span></span>
+        </div>
+        <div class="hd-video">
+          <svg viewBox="0 0 28 20" width="66" height="48" aria-hidden="true"><rect x="1" y="2" width="18" height="16" rx="5" fill="none" stroke="#1e8bff" stroke-width="2.2"/><path d="M21 7l6-4v14l-6-4z" fill="none" stroke="#1e8bff" stroke-width="2.2" stroke-linejoin="round"/></svg>
+        </div>
+      </div>
+
+      <div class="thread">
+        <div class="bubble received" id="v-received-wrap"><span id="v-received"></span></div>
+        <div class="stamp" id="v-timestamp-wrap"><span id="v-timestamp"></span></div>
+        <div class="sent-wrap" id="v-reply-wrap">
+          <div class="bubble sent"><span id="v-reply"></span></div>
+          <div class="delivered" id="v-delivered" hidden>Delivered</div>
+        </div>
+        <div class="spacer"></div>
+        <div class="inputbar">
+          <span class="ib-plus">
+            <svg viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path fill="none" stroke="#8a8a8e" stroke-width="2.4" stroke-linecap="round" d="M12 6v12M6 12h12"/></svg>
+          </span>
+          <span class="ib-field">iMessage
+            <svg class="ib-mic" viewBox="0 0 24 24" width="34" height="34" aria-hidden="true"><path fill="#8a8a8e" d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Z"/><path fill="none" stroke="#8a8a8e" stroke-width="2" stroke-linecap="round" d="M6 11a6 6 0 0 0 12 0M12 18v3"/></svg>
+          </span>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="status" id="m-status">Edit the message and reply on the left, then download the PNG.</div>
+</main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+<script src="assets/js/messages.js"></script>
+</body>
+</html>
